@@ -1,0 +1,217 @@
+import { useState, useMemo } from 'react';
+import { PORTFOLIO_ITEMS } from '../../data/portfolioData';
+import { CategoryId, PortfolioItem, ProjectType } from '../../types';
+import { CategoryFilter } from './CategoryFilter';
+import { ImageLightbox } from './ImageLightbox';
+import { Eye, Sparkles, ArrowUpRight } from 'lucide-react';
+
+interface InteractiveGalleryProps {
+  onSelectForQuote: (projectType: ProjectType, referenceName: string) => void;
+}
+
+export function InteractiveGallery({ onSelectForQuote }: InteractiveGalleryProps) {
+  const [activeCategory, setActiveCategory] = useState<CategoryId>('all');
+  const [selectedLightboxIndex, setSelectedLightboxIndex] = useState<number | null>(null);
+
+  // Compute category counts
+  const counts = useMemo(() => {
+    return {
+      all: PORTFOLIO_ITEMS.length,
+      murales: PORTFOLIO_ITEMS.filter((i) => i.category === 'murales').length,
+      ropa: PORTFOLIO_ITEMS.filter((i) => i.category === 'ropa').length,
+      totebags: PORTFOLIO_ITEMS.filter((i) => i.category === 'totebags').length,
+    };
+  }, []);
+
+  // Filter items
+  const filteredItems = useMemo(() => {
+    if (activeCategory === 'all') return PORTFOLIO_ITEMS;
+    return PORTFOLIO_ITEMS.filter((item) => item.category === activeCategory);
+  }, [activeCategory]);
+
+  const activeLightboxItem: PortfolioItem | null =
+    selectedLightboxIndex !== null ? filteredItems[selectedLightboxIndex] : null;
+
+  const handleNext = () => {
+    if (selectedLightboxIndex === null) return;
+    setSelectedLightboxIndex((selectedLightboxIndex + 1) % filteredItems.length);
+  };
+
+  const handlePrev = () => {
+    if (selectedLightboxIndex === null) return;
+    setSelectedLightboxIndex(
+      (selectedLightboxIndex - 1 + filteredItems.length) % filteredItems.length
+    );
+  };
+
+  const mapCategoryToProjectType = (cat: PortfolioItem['category']): ProjectType => {
+    if (cat === 'murales') return 'mural';
+    if (cat === 'ropa') return 'ropa';
+    if (cat === 'totebags') return 'totebag';
+    return 'otro';
+  };
+
+  return (
+    <section id="galeria" className="py-24 md:py-32 bg-white relative overflow-hidden">
+      {/* Subtle Apple background lighting */}
+      <div className="absolute top-1/4 right-0 w-96 h-96 bg-naho-pink/[0.04] rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute bottom-1/4 left-0 w-96 h-96 bg-naho-blue/[0.04] rounded-full blur-3xl pointer-events-none" />
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        {/* Section Header */}
+        <div className="text-center max-w-3xl mx-auto mb-12">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold uppercase tracking-wider bg-black/[0.03] text-neutral-600 border border-black/[0.06] mb-4">
+            <Sparkles className="w-3.5 h-3.5 text-naho-pink" />
+            Portafolio de Obras Reales
+          </div>
+          <h2 className="text-3xl sm:text-5xl font-black text-neutral-900 tracking-[-0.03em]">
+            Explora las Creaciones de{' '}
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-naho-pink to-naho-orange">
+              Nahocraft
+            </span>
+          </h2>
+          <p className="mt-4 text-base sm:text-lg text-neutral-600 max-w-2xl mx-auto leading-relaxed">
+            Murales monumentales, intervenciones textiles y lienzos botánicos en Tampico. Cada pieza es irrepetible y concebida con pasión artística por Nahomy.
+          </p>
+          <div className="mt-4 flex flex-wrap items-center justify-center gap-3 text-xs text-neutral-500 font-medium">
+            <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-naho-pink/[0.06] text-neutral-800 border border-naho-pink/20">
+              🎨 Pintura acrílica & aerosol
+            </span>
+            <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-naho-blue/[0.06] text-neutral-800 border border-naho-blue/20">
+              ✨ Sin estampados industriales
+            </span>
+            <span className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-naho-green/[0.1] text-neutral-800 border border-naho-green/30">
+              🌿 Piezas de autor protegidas
+            </span>
+          </div>
+        </div>
+
+        {/* Apple-style Segmented Control */}
+        <CategoryFilter
+          activeCategory={activeCategory}
+          onSelectCategory={(cat) => {
+            setActiveCategory(cat);
+            setSelectedLightboxIndex(null);
+          }}
+          counts={counts}
+        />
+
+        {/* Gallery Bento Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-7 mt-12">
+          {filteredItems.map((item, index) => {
+            const glowClass =
+              item.category === 'murales'
+                ? 'glow-mural'
+                : item.category === 'ropa'
+                ? 'glow-ropa'
+                : 'glow-totebag';
+
+            return (
+              <article
+                key={item.id}
+                className={`apple-card rounded-[2.5rem] overflow-hidden flex flex-col justify-between group transition-all duration-500 hover:-translate-y-2.5 ${glowClass}`}
+              >
+                {/* Image Wrap */}
+                <div
+                  className="relative aspect-[4/3] bg-neutral-100 overflow-hidden cursor-pointer"
+                  onClick={() => setSelectedLightboxIndex(index)}
+                >
+                  <img
+                    src={item.image}
+                    alt={item.title}
+                    className="w-full h-full object-cover group-hover:scale-108 transition-transform duration-700 ease-out"
+                  />
+
+                  {/* Glass overlay on hover */}
+                  <div className="absolute inset-0 bg-black/25 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-end justify-between p-4">
+                    <span className="apple-glass text-xs font-semibold text-neutral-900 px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-sm">
+                      <Eye className="w-3.5 h-3.5" />
+                      Ver en detalle
+                    </span>
+                    <span className="text-xs font-medium text-white/90 font-mono">
+                      {item.details?.dimensions}
+                    </span>
+                  </div>
+
+                  {/* Frosted Category Pill Tag */}
+                  <span className="absolute top-3.5 left-3.5 apple-glass text-[11px] font-semibold text-neutral-800 px-3 py-1 rounded-full shadow-xs">
+                    {item.categoryLabel}
+                  </span>
+
+                  {item.details?.curatedTag && (
+                    <span className="absolute top-3.5 right-3.5 bg-black/60 backdrop-blur-md text-white text-[10px] font-medium px-2.5 py-1 rounded-full shadow-xs">
+                      {item.details.curatedTag}
+                    </span>
+                  )}
+                </div>
+
+                {/* Card Body */}
+                <div className="p-6 flex-1 flex flex-col justify-between">
+                  <div>
+                    <h3
+                      onClick={() => setSelectedLightboxIndex(index)}
+                      className="font-extrabold text-[17px] text-neutral-900 leading-snug tracking-tight hover:text-naho-pink transition-colors cursor-pointer"
+                    >
+                      {item.title}
+                    </h3>
+                    <p className="mt-2 text-[13px] text-neutral-500 line-clamp-2 leading-relaxed">
+                      {item.description}
+                    </p>
+                  </div>
+
+                  {/* Specs & Pill Actions */}
+                  <div className="mt-6 pt-4 border-t border-black/[0.05]">
+                    <div className="text-[11px] text-neutral-400 mb-3.5 flex items-center justify-between font-mono">
+                      <span className="truncate max-w-[180px]">
+                        {item.details?.technique}
+                      </span>
+                      <span className="text-neutral-700 font-semibold">
+                        {item.details?.dimensions}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => setSelectedLightboxIndex(index)}
+                        className="py-2.5 px-3 rounded-full bg-neutral-100 hover:bg-neutral-200/80 text-neutral-800 font-semibold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer active:scale-95"
+                      >
+                        <Eye className="w-3.5 h-3.5 text-neutral-500" />
+                        <span>Detalles</span>
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          onSelectForQuote(mapCategoryToProjectType(item.category), item.title);
+                          const el = document.getElementById('cotizador');
+                          if (el) el.scrollIntoView({ behavior: 'smooth' });
+                        }}
+                        className="py-2.5 px-3 rounded-full bg-neutral-950 hover:bg-neutral-800 text-white font-semibold text-xs flex items-center justify-center gap-1.5 shadow-xs transition-all active:scale-95 cursor-pointer"
+                      >
+                        <span>Cotizar</span>
+                        <ArrowUpRight className="w-3.5 h-3.5 text-neutral-400" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Lightbox Modal */}
+      <ImageLightbox
+        item={activeLightboxItem}
+        allItems={filteredItems}
+        onClose={() => setSelectedLightboxIndex(null)}
+        onSelectNext={handleNext}
+        onSelectPrev={handlePrev}
+        onQuoteSimilar={(type, name) => {
+          onSelectForQuote(type, name);
+          const el = document.getElementById('cotizador');
+          if (el) el.scrollIntoView({ behavior: 'smooth' });
+        }}
+      />
+    </section>
+  );
+}
