@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
-import { WEEKLY_SCHEDULE, isStudioOpenNow } from '../../data/scheduleData';
+import { isStudioOpenNow } from '../../data/scheduleData';
+import { useSiteData } from '../../context/SiteDataContext';
 import { ScheduleStatusBadge } from '../layout/ScheduleStatusBadge';
 import { Clock, Calendar, XCircle } from 'lucide-react';
 
 export function ScheduleCard() {
+  const { weeklySchedule } = useSiteData();
   const [status, setStatus] = useState(() => isStudioOpenNow());
 
   useEffect(() => {
@@ -22,20 +24,20 @@ export function ScheduleCard() {
               <Clock className="w-4 h-4" />
             </div>
             <h3 className="font-extrabold text-xl text-neutral-900 tracking-tight">
-              Horarios Oficiales
+              Horarios del Taller Físico
             </h3>
           </div>
           <p className="text-xs text-neutral-400">
-            Atención personalizada en Tampico, Tamaulipas
+            Clases presenciales y atención en Col. Minerva, Tampico
           </p>
         </div>
 
         <ScheduleStatusBadge />
       </div>
 
-      {/* Schedule Table (Apple clean rows) */}
+      {/* Schedule Table */}
       <div className="mt-6 divide-y divide-black/[0.04]">
-        {WEEKLY_SCHEDULE.map((item) => {
+        {weeklySchedule.map((item) => {
           const isToday = item.dayName.toLowerCase() === status.currentDay.toLowerCase();
 
           return (
@@ -88,11 +90,10 @@ export function ScheduleCard() {
         })}
       </div>
 
-      {/* Helpful note */}
       <div className="mt-6 p-4 rounded-2xl bg-neutral-50/80 border border-black/[0.04] text-xs text-neutral-500 flex items-start gap-3">
         <Calendar className="w-4 h-4 text-neutral-700 shrink-0 mt-0.5" />
         <p className="leading-relaxed">
-          <strong className="text-neutral-800">¿Deseas visitar el taller en horario especial?</strong> Puedes coordinar cita previa por WhatsApp para revisión de bocetos o entrega de piezas.
+          <strong className="text-neutral-800">¿Deseas inscribirte a clases presenciales o visitar el taller?</strong> Puedes acudir directamente en nuestros horarios de atención o escribirnos al correo oficial para niños, adolescentes o adultos.
         </p>
       </div>
     </div>

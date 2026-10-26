@@ -1,4 +1,4 @@
-import { MessageCircle, ExternalLink } from 'lucide-react';
+import { ExternalLink } from 'lucide-react';
 
 interface SocialLinksProps {
   layout?: 'grid' | 'row';
@@ -90,16 +90,6 @@ export function SocialLinks({ layout = 'grid' }: SocialLinksProps) {
             </a>
           );
         })}
-        <a
-          href="https://wa.me/528333655622"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="p-2.5 rounded-full bg-emerald-950/80 hover:bg-emerald-900 text-emerald-400 hover:text-white transition-all hover:scale-105 active:scale-95"
-          aria-label="WhatsApp Nahocraft"
-          title="WhatsApp: +52 833 365 5622"
-        >
-          <MessageCircle className="w-4 h-4" />
-        </a>
       </div>
     );
   }

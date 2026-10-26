@@ -211,10 +211,43 @@
   box-shadow: 0 20px 45px -8px rgba(254, 55, 112, 0.2), 0 4px 10px -2px rgba(254, 55, 112, 0.05);
 }
 
-.glow-ropa:hover {
+.glow-mural-blue:hover {
   box-shadow: 0 20px 45px -8px rgba(35, 179, 244, 0.2), 0 4px 10px -2px rgba(35, 179, 244, 0.05);
 }
 
-.glow-totebag:hover {
+.glow-mural-green:hover {
   box-shadow: 0 20px 45px -8px rgba(176, 220, 7, 0.25), 0 4px 10px -2px rgba(176, 220, 7, 0.08);
 }
+
+/* Native <dialog> modal backdrop & modern :user-invalid / :user-valid styles */
+dialog::backdrop {
+  background-color: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.mwg-input:user-invalid,
+.mwg-input.user-invalid-fallback {
+  border-color: #d93025 !important;
+  background-color: #fce8e6 !important;
+}
+
+.mwg-input:user-valid {
+  border-color: #188038;
+}
+
+.mwg-error-msg {
+  display: none;
+  color: #d93025;
+  font-size: 0.75rem;
+  font-weight: 600;
+  margin-top: 0.35rem;
+}
+
+.mwg-input:user-invalid + .mwg-error-msg,
+.mwg-input.user-invalid-fallback + .mwg-error-msg {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+

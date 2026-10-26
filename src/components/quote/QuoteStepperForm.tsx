@@ -1,13 +1,19 @@
 import { useState, useId } from 'react';
-import { QuoteFormData, ProjectType, PreferredContactMethod, QuoteTicket } from '../../types';
+import {
+  QuoteFormData,
+  MuralCityZone,
+  QuoteTicket,
+} from '../../types';
+import { useSiteData } from '../../context/SiteDataContext';
 import { LiveSummary } from './LiveSummary';
-import { StudioAdminPreviewModal } from './StudioAdminPreviewModal';
 import confetti from 'canvas-confetti';
+import { sendClientQuoteConfirmation, sendStudioQuoteNotification } from '../../emails';
 import {
   Palette,
-  Shirt,
-  ShoppingBag,
+  Building2,
+  Home,
   Sparkles,
+  Compass,
   ArrowRight,
   ArrowLeft,
   Calendar,
@@ -21,35 +27,39 @@ import {
   Image as ImageIcon,
   Trash2,
   RefreshCw,
-  Inbox,
-  MessageCircle,
   Check,
+  Lock,
+  PlusCircle,
 } from 'lucide-react';
 
 interface QuoteStepperFormProps {
-  initialProjectType?: ProjectType;
+  initialMuralCategory?: string;
   referenceArtTitle?: string;
 }
 
 export function QuoteStepperForm({
-  initialProjectType = 'mural',
+  initialMuralCategory = 'Negocios & Comercial',
   referenceArtTitle,
 }: QuoteStepperFormProps) {
+  const { muralCategories, addQuoteTicket } = useSiteData();
   const [currentStep, setCurrentStep] = useState(1);
   const totalSteps = 4;
 
   const [formData, setFormData] = useState<QuoteFormData>({
-    projectType: initialProjectType,
-    dimensions: 'Mural mediano (aprox. 3m x 2m)',
+    projectType: 'mural',
+    muralCategory: initialMuralCategory,
+    customMuralType: '',
+    dimensions: 'Mural mediano (aprox. 3m x 2.5m)',
     customDimensions: '',
     surfaceOrMaterial: 'Pared lisa en interior',
-    colorPalette: 'Vibrante Nahocraft (Fucsia, Naranja, Amarillo, Azul)',
     themeAndDetails: '',
+    datePreferenceType: 'especifica',
     deadlineDate: '',
+    cityZone: 'Tampico',
+    neighborhoodOrAddress: '',
     clientName: '',
     clientEmail: '',
     clientPhone: '',
-    preferredContact: 'whatsapp',
     clientLocation: 'Tampico, Tamps.',
     clientNotes: '',
     referenceImagePreview: undefined,
@@ -58,107 +68,45 @@ export function QuoteStepperForm({
 
   const [createdTicket, setCreatedTicket] = useState<QuoteTicket | null>(null);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
-  const [showAdminPanelModal, setShowAdminPanelModal] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
 
   // Accessibility IDs
+  const customMuralTypeId = useId();
   const customDimensionsId = useId();
   const themeDetailsId = useId();
   const deadlineDateId = useId();
   const clientNameId = useId();
   const clientEmailId = useId();
   const clientPhoneId = useId();
-  const clientLocationId = useId();
+  const neighborhoodId = useId();
   const clientNotesId = useId();
   const imageUploadInputId = useId();
 
-  // Presets based on project type
-  const dimensionPresets: Record<ProjectType, { label: string; surface: string; popular?: boolean }[]> = {
-    mural: [
-      { label: 'Mural mediano (aprox. 3m x 2m)', surface: 'Pared lisa en interior', popular: true },
-      { label: 'Mural comercial gran formato (5m x 3m)', surface: 'Fachada o muro comercial exterior' },
-      { label: 'Mural decorativo boutique (2m x 2m)', surface: 'Pared interior de negocio / casa' },
-      { label: 'Medidas especiales personalizadas', surface: 'Por inspeccionar en sitio' },
-    ],
-    ropa: [
-      { label: 'Chamarra Denim (Intervención espalda completa)', surface: 'Mezclilla / Denim pesado', popular: true },
-      { label: 'Chamarra Denim (Espalda + detalles cuello/mangas)', surface: 'Mezclilla vintage / nueva' },
-      { label: 'Prenda propia del cliente a intervenir', surface: 'Algodón, mezclilla o lona' },
-      { label: 'Prenda provista por Nahocraft a medida', surface: 'Textil seleccionado de autor' },
-    ],
-    totebag: [
-      { label: '1 Totebag de Lienzo (38 x 42 cm)', surface: 'Lona 100% algodón grueso', popular: true },
-      { label: 'Pack Colección (3 a 5 piezas ilustradas)', surface: 'Lona 100% algodón premium' },
-      { label: 'Lote personalizado para eventos (6+ piezas)', surface: 'Lienzo artesanal' },
-    ],
-    otro: [
-      { label: 'Intervención en soporte especial', surface: 'Madera, calzado, accesorios u otro', popular: true },
-      { label: 'Cuadro en bastidor / Lienzo artístico', surface: 'Lienzo montado en madera' },
-    ],
-  };
-
-  // Artistic palettes / creative color moods
-  const artisticPalettes = [
-    {
-      id: 'vibrante',
-      name: 'Vibrante Nahocraft',
-      description: 'Estilo icónico del taller: lleno de vida, alegría y energía tropical',
-      colors: ['#FE3770', '#FC6408', '#FCDD1D', '#23B3F4'],
-    },
-    {
-      id: 'pastel',
-      name: 'Pastel & Floral',
-      description: 'Delicado, romántico y sutil con tonalidades suaves',
-      colors: ['#F9A8D4', '#C4B5FD', '#A7F3D0', '#FEF08A'],
-    },
-    {
-      id: 'organico',
-      name: 'Orgánico & Botánico',
-      description: 'Tonos cálidos inspirados en la tierra, hojas y naturaleza',
-      colors: ['#B45309', '#65A30D', '#D97706', '#78350F'],
-    },
-    {
-      id: 'contraste',
-      name: 'Alto Contraste Urbano',
-      description: 'Base oscura con destellos de color gráfico audaz',
-      colors: ['#171717', '#FFFFFF', '#FE3770', '#38BDF8'],
-    },
-    {
-      id: 'libre',
-      name: 'Libre Elección por Nahomy',
-      description: 'Deja que la artista diseñe la armonía perfecta según tu espacio',
-      colors: ['#FE3770', '#FCDD1D', '#B0DC07', '#D77EF9'],
-    },
+  const muralDimensionPresets = [
+    { label: 'Mural decorativo boutique (aprox. 2m x 2m)', surface: 'Pared interior de casa o negocio' },
+    { label: 'Mural mediano (aprox. 3m x 2.5m)', surface: 'Pared lisa en interior', popular: true },
+    { label: 'Mural comercial gran formato (5m x 3m)', surface: 'Muro comercial o fachada exterior' },
+    { label: 'Mural monumental (+6m de ancho)', surface: 'Fachada arquitectónica o nave comercial' },
+    { label: 'Medidas especiales personalizadas', surface: 'Por medir o evaluar con Nahomy' },
   ];
 
   const themeIdeaPresets = [
-    'Botánico, hojas y naturaleza tropical',
-    'Identidad de marca / Logotipo / Branding comercial',
-    'Retrato ilustrado / Personaje favorito',
-    'Cultura pop / Homenaje musical (Eras Tour, festivales)',
-    'Propuesta artística libre por Nahomy',
+    'Mural para negocio / Punto fotográfico',
+    'Botánico, hojas tropicales y naturaleza para casa',
+    'Identidad de marca / Logotipo artístico comercial',
+    'Decoración de habitación o sala residencial',
+    'Propuesta artística libre diseñada por Nahomy',
   ];
 
-  const quickZones = [
-    'Tampico, Tamps.',
-    'Cd. Madero, Tamps.',
-    'Altamira, Tamps.',
-    'Envío Nacional (México)',
+  const allowedCities: { city: MuralCityZone; desc: string }[] = [
+    { city: 'Tampico', desc: 'Zona Centro, Minerva, Lomas de Rosales, Hidalgo y alrededores' },
+    { city: 'Ciudad Madero', desc: 'Playa Miramar, Unidad Nacional, Centro y colonias' },
+    { city: 'Altamira', desc: 'Zona Centro, Residenciales, Corredor Urbano e Industrial' },
   ];
-
-  const handleProjectTypeChange = (type: ProjectType) => {
-    const defaultPreset = dimensionPresets[type][0];
-    setFormData((prev) => ({
-      ...prev,
-      projectType: type,
-      dimensions: defaultPreset.label,
-      surfaceOrMaterial: defaultPreset.surface,
-    }));
-  };
 
   const processImageFile = (file: File) => {
     if (!file.type.startsWith('image/')) {
-      alert('Por favor selecciona un archivo de imagen válido (JPG, PNG, WEBP, etc.).');
+      alert('Por favor selecciona un archivo de imagen válido (JPG, PNG, WEBP).');
       return;
     }
     if (file.size > 10 * 1024 * 1024) {
@@ -198,77 +146,71 @@ export function QuoteStepperForm({
     }));
   };
 
+  // Strict per-step validation
   const isStepValid = (step: number): boolean => {
-    if (step === 1) return Boolean(formData.projectType);
-    if (step === 2) return Boolean(formData.dimensions);
-    if (step === 3) return formData.themeAndDetails.trim().length >= 4;
-    if (step === 4)
+    if (step === 1) {
+      if (!formData.muralCategory || !formData.cityZone) return false;
+      if (
+        formData.muralCategory === 'Otro tipo de mural' &&
+        (!formData.customMuralType || formData.customMuralType.trim().length < 3)
+      ) {
+        return false;
+      }
+      return true;
+    }
+    if (step === 2) {
+      if (!formData.dimensions) return false;
+      if (
+        formData.dimensions === 'Medidas especiales personalizadas' &&
+        formData.customDimensions.trim().length < 3
+      ) {
+        return false;
+      }
+      return true;
+    }
+    if (step === 3) {
+      return (
+        formData.themeAndDetails.trim().length >= 5 &&
+        formData.deadlineDate.trim().length > 0
+      );
+    }
+    if (step === 4) {
       return (
         formData.clientName.trim().length >= 2 &&
         formData.clientEmail.trim().includes('@') &&
+        formData.clientEmail.trim().includes('.') &&
         formData.clientPhone.trim().length >= 8
       );
+    }
+    return true;
+  };
+
+  // Can only navigate to targetStep if all previous steps 1..(targetStep-1) are valid
+  const canNavigateToStep = (targetStep: number): boolean => {
+    if (targetStep <= currentStep) return true;
+    for (let s = 1; s < targetStep; s++) {
+      if (!isStepValid(s)) return false;
+    }
     return true;
   };
 
   const isFormComplete =
-    Boolean(formData.projectType) &&
-    Boolean(formData.dimensions) &&
-    formData.themeAndDetails.trim().length >= 4 &&
-    formData.clientName.trim().length >= 2 &&
-    formData.clientEmail.trim().includes('@') &&
-    formData.clientPhone.trim().length >= 8;
+    isStepValid(1) && isStepValid(2) && isStepValid(3) && isStepValid(4);
 
-  const buildOfficialSummary = () => {
-    const projectLabels: Record<ProjectType, string> = {
-      mural: 'Mural Artístico (Comercial / Residencial)',
-      ropa: 'Diseño de Ropa & Custom Denim',
-      totebag: 'Totebag Artesanal en Lienzo',
-      otro: 'Proyecto Artístico Personalizado',
-    };
-
-    let msg = `🎨 FICHA DE COTIZACIÓN - NAHOCRAFT CENTRO DE ARTE\n`;
-    msg += `═══════════════════════════════════════════════════\n\n`;
-    if (referenceArtTitle) {
-      msg += `✨ Obra de inspiración: "${referenceArtTitle}"\n\n`;
-    }
-    msg += `📋 DETALLES TÉCNICOS:\n`;
-    msg += `• Disciplina: ${projectLabels[formData.projectType]}\n`;
-    msg += `• Dimensiones: ${formData.dimensions}${
-      formData.customDimensions ? ` (Detalle: ${formData.customDimensions})` : ''
-    }\n`;
-    msg += `• Soporte / Superficie: ${formData.surfaceOrMaterial || 'Por coordinar'}\n`;
-    msg += `• Paleta o Vibra: ${formData.colorPalette || 'Elección libre por Nahomy'}\n`;
-    msg += `• Idea / Visión: ${formData.themeAndDetails}\n`;
-
-    if (formData.referenceImageName) {
-      msg += `• Imagen de referencia: Adjunta (${formData.referenceImageName})\n`;
-    }
-
-    msg += `• Fecha límite: ${formData.deadlineDate || 'Flexible / A coordinar'}\n\n`;
-
-    msg += `👤 DATOS DEL CLIENTE:\n`;
-    msg += `• Nombre: ${formData.clientName}\n`;
-    msg += `• Correo: ${formData.clientEmail}\n`;
-    msg += `• Teléfono: ${formData.clientPhone}\n`;
-    msg += `• Canal de contacto preferido: ${formData.preferredContact.toUpperCase()}\n`;
-    msg += `• Ubicación / Zona: ${formData.clientLocation}\n`;
-    if (formData.clientNotes.trim()) {
-      msg += `• Notas adicionales: ${formData.clientNotes}\n`;
-    }
-    msg += `\n📍 Enviado para registro en panel oficial y correo de Nahomy (Tampico, Tamps.)`;
-
-    return msg;
-  };
-
-  // Submit quote handler (official workflow)
   const handleSubmitQuote = () => {
     if (!isFormComplete) return;
 
-    // Generate ticket for production dashboard
     const folioNumber = Math.floor(100 + Math.random() * 900);
+    const formattedLoc = `${formData.cityZone}${
+      formData.neighborhoodOrAddress ? ` • ${formData.neighborhoodOrAddress}` : ', Tamps.'
+    }`;
+    const resolvedCategory =
+      formData.muralCategory === 'Otro tipo de mural' && formData.customMuralType?.trim()
+        ? `Otro: ${formData.customMuralType.trim()}`
+        : formData.muralCategory;
+
     const newTicket: QuoteTicket = {
-      folio: `#NC-2026-${folioNumber}`,
+      folio: `#MURAL-2026-${folioNumber}`,
       createdAt: new Date().toLocaleDateString('es-MX', {
         day: '2-digit',
         month: 'short',
@@ -277,81 +219,131 @@ export function QuoteStepperForm({
         minute: '2-digit',
       }),
       status: 'nuevo',
-      formData: { ...formData },
+      formData: {
+        ...formData,
+        muralCategory: resolvedCategory,
+        clientLocation: formattedLoc,
+      },
       referenceArtTitle,
     };
 
+    addQuoteTicket(newTicket);
     setCreatedTicket(newTicket);
+
+    // Despacho directo a través del servicio de correos oficial
+    sendClientQuoteConfirmation({
+      clientName: newTicket.formData.clientName,
+      clientEmail: newTicket.formData.clientEmail,
+      clientPhone: newTicket.formData.clientPhone,
+      folio: newTicket.folio,
+      muralCategory: newTicket.formData.muralCategory,
+      dimensions: newTicket.formData.dimensions,
+      customDimensions: newTicket.formData.customDimensions,
+      surfaceOrMaterial: newTicket.formData.surfaceOrMaterial,
+      cityZone: newTicket.formData.cityZone,
+      neighborhoodOrAddress: newTicket.formData.neighborhoodOrAddress,
+      deadlineDate: newTicket.formData.deadlineDate,
+      themeAndDetails: newTicket.formData.themeAndDetails,
+    }).catch(console.error);
+
+    sendStudioQuoteNotification({
+      clientName: newTicket.formData.clientName,
+      clientEmail: newTicket.formData.clientEmail,
+      clientPhone: newTicket.formData.clientPhone,
+      folio: newTicket.folio,
+      muralCategory: newTicket.formData.muralCategory,
+      dimensions: newTicket.formData.dimensions,
+      customDimensions: newTicket.formData.customDimensions,
+      surfaceOrMaterial: newTicket.formData.surfaceOrMaterial,
+      cityZone: newTicket.formData.cityZone,
+      neighborhoodOrAddress: newTicket.formData.neighborhoodOrAddress,
+      deadlineDate: newTicket.formData.deadlineDate,
+      themeAndDetails: newTicket.formData.themeAndDetails,
+      referenceImagePreview: newTicket.formData.referenceImagePreview,
+    }).catch(console.error);
 
     try {
       confetti({
-        particleCount: 120,
-        spread: 80,
+        particleCount: 110,
+        spread: 75,
         origin: { y: 0.6 },
         colors: ['#FE3770', '#FC6408', '#FCDD1D', '#23B3F4', '#B0DC07', '#D77EF9'],
       });
     } catch {
-      // Ignore confetti error
+      // ignore confetti error
     }
 
     setShowSuccessModal(true);
   };
 
-  const openWhatsAppFallback = () => {
-    const summary = buildOfficialSummary();
-    const encoded = encodeURIComponent(
-      `🎨 ¡Hola Nahomy! Registré mi cotización ${createdTicket?.folio || ''} en la web:\n\n${summary}`
-    );
-    window.open(`https://wa.me/528333655622?text=${encoded}`, '_blank', 'noopener,noreferrer');
+  const getCategoryIcon = (id: string) => {
+    if (id === 'comercial') return Building2;
+    if (id === 'residencial') return Home;
+    if (id === 'decoracion') return Sparkles;
+    if (id === 'urbano') return Compass;
+    return Palette;
   };
+
+  const isOtherCategorySelected = formData.muralCategory === 'Otro tipo de mural';
 
   return (
     <section id="cotizador" className="py-24 md:py-32 bg-[#FBFBFA] relative overflow-hidden">
-      {/* Background artistic ambient lighting with Nahocraft palette */}
       <div className="absolute top-1/4 right-0 w-[550px] h-[550px] bg-gradient-to-br from-naho-pink/[0.06] via-naho-orange/[0.04] to-naho-purple/[0.04] rounded-full blur-3xl pointer-events-none -z-10" />
       <div className="absolute bottom-10 left-0 w-[450px] h-[450px] bg-gradient-to-tr from-naho-blue/[0.05] via-naho-green/[0.04] to-transparent rounded-full blur-3xl pointer-events-none -z-10" />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        {/* Section title (Apple editorial typography + artistic soul) */}
-        <div className="text-center max-w-3xl mx-auto mb-14">
-          <div className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-white border border-black/[0.06] text-neutral-800 shadow-2xs mb-4">
-            <span className="w-2 h-2 rounded-full bg-gradient-to-r from-naho-pink to-naho-orange" />
-            Configurador de Obras & Proyectos Artísticos
+        {/* Section Header */}
+        <div className="text-center max-w-3xl mx-auto mb-12">
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-white border border-black/[0.08] text-neutral-900 shadow-2xs mb-4">
+            <MapPin className="w-3.5 h-3.5 text-naho-pink" />
+            Servicio Exclusivo en Tampico, Ciudad Madero y Altamira
           </div>
           <h2 className="text-3xl sm:text-5xl font-black text-neutral-900 tracking-[-0.035em]">
-            Diseña tu Obra con{' '}
+            Pide tu Propio Mural con{' '}
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-naho-pink via-naho-orange to-naho-blue">
               Nahomy
             </span>
           </h2>
-          <p className="mt-4 text-base sm:text-lg text-neutral-500 max-w-2xl mx-auto leading-relaxed">
-            Personaliza el formato, la técnica y la vibra cromática de tu proyecto en 4 pasos. Tu solicitud ingresará al panel de trabajo y correo oficial del estudio para recibir una propuesta formal.
+          <p className="mt-4 text-base sm:text-lg text-neutral-600 max-w-2xl mx-auto leading-relaxed">
+            Ya sea para tu <strong>negocio, casa, restaurante o decoración interior</strong>. Cuéntanos qué tipo de mural quieres, para cuándo lo buscas y adjunta una imagen opcional de tu idea.
           </p>
         </div>
 
-        {/* Stepper Progress Bar (Apple Segmented Capsule Indicator) */}
+        {/* Stepper Progress Bar (Locked unless previous steps are valid) */}
         <div className="max-w-3xl mx-auto mb-12">
           <div className="bg-black/[0.03] p-1.5 rounded-full border border-black/[0.05] grid grid-cols-4 gap-1 shadow-2xs backdrop-blur-md">
             {[
-              { step: 1, label: 'Tipo de Obra', icon: Palette },
-              { step: 2, label: 'Dimensiones', icon: Ruler },
-              { step: 3, label: 'Arte & Paleta', icon: Calendar },
-              { step: 4, label: 'Contacto', icon: User },
+              { step: 1, label: 'Tipo & Zona', icon: Palette },
+              { step: 2, label: 'Medidas', icon: Ruler },
+              { step: 3, label: 'Idea, Fecha & Foto', icon: Calendar },
+              { step: 4, label: 'Tus Datos', icon: User },
             ].map((s) => {
               const isCurrent = currentStep === s.step;
-              const isPassed = currentStep > s.step;
+              const isPassed = currentStep > s.step && isStepValid(s.step);
+              const isAllowed = canNavigateToStep(s.step);
               const StepIcon = s.icon;
 
               return (
                 <button
                   key={s.step}
-                  onClick={() => setCurrentStep(s.step)}
-                  className={`py-2.5 px-2 rounded-full flex items-center justify-center gap-2 transition-all duration-300 text-xs font-semibold select-none cursor-pointer ${
+                  type="button"
+                  disabled={!isAllowed}
+                  onClick={() => {
+                    if (isAllowed) setCurrentStep(s.step);
+                  }}
+                  title={
+                    isAllowed
+                      ? `Ir al paso ${s.step}: ${s.label}`
+                      : 'Completa los campos obligatorios del paso actual antes de avanzar'
+                  }
+                  className={`py-2.5 px-2 rounded-full flex items-center justify-center gap-2 transition-all duration-300 text-xs font-semibold select-none ${
                     isCurrent
-                      ? 'bg-white text-neutral-950 shadow-[0_4px_16px_rgba(0,0,0,0.08)] scale-[1.01]'
+                      ? 'bg-white text-neutral-950 shadow-[0_4px_16px_rgba(0,0,0,0.08)] scale-[1.01] cursor-pointer'
                       : isPassed
-                      ? 'text-neutral-900 hover:bg-black/[0.02]'
-                      : 'text-neutral-400 hover:text-neutral-700'
+                      ? 'text-neutral-900 hover:bg-black/[0.03] cursor-pointer'
+                      : isAllowed
+                      ? 'text-neutral-600 hover:text-neutral-900 cursor-pointer'
+                      : 'text-neutral-400/70 opacity-60 cursor-not-allowed'
                   }`}
                 >
                   <div
@@ -363,7 +355,13 @@ export function QuoteStepperForm({
                         : 'bg-black/[0.06] text-neutral-400'
                     }`}
                   >
-                    {isPassed ? <CheckCircle className="w-3 h-3" /> : s.step}
+                    {isPassed ? (
+                      <CheckCircle className="w-3 h-3" />
+                    ) : !isAllowed ? (
+                      <Lock className="w-2.5 h-2.5" />
+                    ) : (
+                      s.step
+                    )}
                   </div>
                   <span className="hidden sm:inline tracking-tight font-medium flex items-center gap-1.5">
                     <StepIcon className="w-3.5 h-3.5 opacity-60 hidden md:inline" />
@@ -375,318 +373,340 @@ export function QuoteStepperForm({
           </div>
         </div>
 
-        {/* Main Grid: Stepper Wizard (Left) + Live Summary (Right) */}
+        {/* Main Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          {/* Stepper Wizard Form (Apple Bento Surface) */}
           <div className="lg:col-span-7 apple-card rounded-[2.5rem] p-7 sm:p-10 border border-black/[0.06] shadow-[0_20px_50px_rgba(0,0,0,0.04)]">
-            {/* Step 1: Tipo de Proyecto (Apple Store Device Picker Style) */}
+            {/* STEP 1: Tipo de Mural (+ "Otro tipo de mural") y Ubicación */}
             {currentStep === 1 && (
-              <div className="space-y-7 animate-in fade-in slide-in-from-right-4 duration-400 ease-out">
+              <div className="space-y-7 animate-in fade-in duration-300">
                 <div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-mono uppercase font-bold tracking-wider text-naho-pink">
-                      Paso 1 de 4 • Disciplina Artística
-                    </span>
-                    <span className="text-xs text-neutral-400">Paso obligatorio</span>
-                  </div>
+                  <span className="text-[11px] font-mono uppercase font-bold tracking-wider text-naho-pink">
+                    Paso 1 de 4 • Categoría de Mural & Ubicación (Obligatorio)
+                  </span>
                   <h3 className="text-xl sm:text-2xl font-black text-neutral-900 tracking-tight mt-1">
-                    ¿Qué tipo de obra deseas cotizar?
+                    ¿Qué tipo de mural te gustaría pedir?
                   </h3>
                   <p className="text-sm text-neutral-500 mt-1">
-                    Selecciona la disciplina artística principal para adaptar automáticamente los formatos y materiales.
+                    Elige la categoría de tu mural o selecciona &ldquo;Otro tipo de mural&rdquo; si buscas algo diferente.
                   </p>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {[
-                    {
-                      id: 'mural' as ProjectType,
-                      title: 'Muralismo',
-                      tagline: 'Comercial & Interior',
-                      description: 'Paredes, fachadas, negocios y residencias en Tampico.',
-                      icon: Palette,
-                      accentColor: 'text-naho-pink bg-naho-pink/10',
-                      badge: 'Gran Formato',
-                    },
-                    {
-                      id: 'ropa' as ProjectType,
-                      title: 'Diseño de Ropa',
-                      tagline: 'Custom Denim Art',
-                      description: 'Chamarras, chalecos y prendas ilustradas a mano indelebles.',
-                      icon: Shirt,
-                      accentColor: 'text-naho-blue bg-naho-blue/10',
-                      badge: 'Más Popular',
-                    },
-                    {
-                      id: 'totebag' as ProjectType,
-                      title: 'Totebag Artesanal',
-                      tagline: '100% Lienzo de Algodón',
-                      description: 'Bolsas ecológicas de autor, individuales o colecciones.',
-                      icon: ShoppingBag,
-                      accentColor: 'text-lime-700 bg-naho-green/20',
-                      badge: 'Artesanal',
-                    },
-                    {
-                      id: 'otro' as ProjectType,
-                      title: 'Proyecto Especial',
-                      tagline: 'Lienzo o Soporte Libre',
-                      description: 'Cuadros en bastidor, calzado o intervención personalizada.',
-                      icon: Sparkles,
-                      accentColor: 'text-naho-purple bg-purple-100',
-                      badge: 'A Medida',
-                    },
-                  ].map((option) => {
-                    const isSelected = formData.projectType === option.id;
-                    const Icon = option.icon;
+                {/* Dynamic Mural Categories + "Otro tipo de mural" */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  {muralCategories.map((cat) => {
+                    const isSelected = formData.muralCategory === cat.label;
+                    const Icon = getCategoryIcon(cat.id);
 
                     return (
                       <button
-                        key={option.id}
+                        key={cat.id}
                         type="button"
-                        onClick={() => handleProjectTypeChange(option.id)}
-                        className={`p-6 rounded-[1.75rem] text-left transition-all duration-300 flex flex-col justify-between gap-5 cursor-pointer select-none active:scale-[0.98] ${
+                        onClick={() =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            muralCategory: cat.label,
+                          }))
+                        }
+                        className={`p-5 rounded-3xl text-left transition-all duration-300 flex flex-col justify-between gap-4 cursor-pointer active:scale-[0.98] ${
                           isSelected
-                            ? 'border-2 border-neutral-950 bg-neutral-950 text-white shadow-[0_12px_30px_rgba(0,0,0,0.18)] scale-[1.01]'
-                            : 'border border-black/[0.08] bg-white hover:border-black/25 hover:shadow-md text-neutral-900'
+                            ? 'border-2 border-neutral-950 bg-neutral-950 text-white shadow-lg'
+                            : 'border border-black/[0.08] bg-white hover:border-black/25 text-neutral-900'
                         }`}
                       >
-                        <div className="flex items-start justify-between">
+                        <div className="flex items-center justify-between">
                           <div
-                            className={`p-3 rounded-2xl transition-colors ${
-                              isSelected ? 'bg-white/10 text-white' : option.accentColor
+                            className={`p-2.5 rounded-2xl ${
+                              isSelected ? 'bg-white/15 text-white' : 'bg-naho-pink/10 text-naho-pink'
                             }`}
                           >
                             <Icon className="w-5 h-5" />
                           </div>
-
-                          <div className="flex items-center gap-2">
-                            <span
-                              className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
-                                isSelected
-                                  ? 'bg-white/15 text-white'
-                                  : 'bg-black/[0.04] text-neutral-500'
-                              }`}
-                            >
-                              {option.badge}
-                            </span>
-                            <div
-                              className={`w-5 h-5 rounded-full border flex items-center justify-center transition-all ${
-                                isSelected
-                                  ? 'border-white bg-white text-neutral-950'
-                                  : 'border-black/20 bg-transparent'
-                              }`}
-                            >
-                              {isSelected && <span className="w-2 h-2 rounded-full bg-neutral-950" />}
-                            </div>
+                          <div
+                            className={`w-5 h-5 rounded-full border flex items-center justify-center ${
+                              isSelected ? 'border-white bg-white' : 'border-black/20'
+                            }`}
+                          >
+                            {isSelected && <span className="w-2 h-2 rounded-full bg-neutral-950" />}
                           </div>
                         </div>
 
                         <div>
-                          <span
-                            className={`text-[11px] font-semibold block uppercase tracking-wider ${
-                              isSelected ? 'text-neutral-400' : 'text-neutral-500'
-                            }`}
-                          >
-                            {option.tagline}
-                          </span>
-                          <h4 className="font-extrabold text-lg tracking-tight mt-0.5">
-                            {option.title}
-                          </h4>
+                          <h4 className="font-extrabold text-base tracking-tight">{cat.label}</h4>
                           <p
-                            className={`text-xs mt-1.5 leading-relaxed ${
+                            className={`text-xs mt-1 leading-relaxed ${
                               isSelected ? 'text-neutral-300' : 'text-neutral-500'
                             }`}
                           >
-                            {option.description}
+                            {cat.description || 'Mural personalizado pintado 100% a mano.'}
                           </p>
                         </div>
                       </button>
                     );
                   })}
+
+                  {/* Option: "Otro tipo de mural" */}
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        muralCategory: 'Otro tipo de mural',
+                      }))
+                    }
+                    className={`p-5 rounded-3xl text-left transition-all duration-300 flex flex-col justify-between gap-4 cursor-pointer active:scale-[0.98] ${
+                      isOtherCategorySelected
+                        ? 'border-2 border-neutral-950 bg-neutral-950 text-white shadow-lg'
+                        : 'border border-black/[0.08] bg-white hover:border-black/25 text-neutral-900'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div
+                        className={`p-2.5 rounded-2xl ${
+                          isOtherCategorySelected
+                            ? 'bg-white/15 text-white'
+                            : 'bg-naho-purple/15 text-naho-purple'
+                        }`}
+                      >
+                        <PlusCircle className="w-5 h-5" />
+                      </div>
+                      <div
+                        className={`w-5 h-5 rounded-full border flex items-center justify-center ${
+                          isOtherCategorySelected ? 'border-white bg-white' : 'border-black/20'
+                        }`}
+                      >
+                        {isOtherCategorySelected && (
+                          <span className="w-2 h-2 rounded-full bg-neutral-950" />
+                        )}
+                      </div>
+                    </div>
+
+                    <div>
+                      <h4 className="font-extrabold text-base tracking-tight">
+                        Otro tipo de mural
+                      </h4>
+                      <p
+                        className={`text-xs mt-1 leading-relaxed ${
+                          isOtherCategorySelected ? 'text-neutral-300' : 'text-neutral-500'
+                        }`}
+                      >
+                        ¿Tienes una idea o proyecto distinto que no aparece en las opciones? Especifícalo aquí.
+                      </p>
+                    </div>
+                  </button>
+                </div>
+
+                {/* Custom Mural Type Input when "Otro tipo de mural" is selected */}
+                {isOtherCategorySelected && (
+                  <div className="p-5 rounded-3xl bg-naho-pink/[0.05] border border-naho-pink/25 animate-in fade-in duration-200">
+                    <label
+                      htmlFor={customMuralTypeId}
+                      className="text-xs font-extrabold uppercase tracking-wider text-neutral-900 block mb-2"
+                    >
+                      ¿Qué tipo de mural tienes en mente? (Obligatorio) *
+                    </label>
+                    <input
+                      id={customMuralTypeId}
+                      type="text"
+                      required
+                      placeholder="Ej. Mural para consultorio pediátrico, salón de eventos, escuela, terraza..."
+                      value={formData.customMuralType || ''}
+                      onChange={(e) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          customMuralType: e.target.value,
+                        }))
+                      }
+                      className="w-full px-4 py-3 rounded-2xl border border-black/[0.12] text-sm bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900"
+                    />
+                  </div>
+                )}
+
+                {/* Exclusive Coverage City Selector: Tampico, Ciudad Madero y Altamira */}
+                <div className="p-5 rounded-3xl bg-neutral-50 border border-black/[0.06] space-y-4">
+                  <div>
+                    <span className="inline-flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wider text-neutral-900">
+                      <MapPin className="w-4 h-4 text-naho-pink" />
+                      ¿En qué municipio se pintará el mural? *
+                    </span>
+                    <p className="text-xs text-neutral-500 mt-0.5">
+                      Importante: Nuestro servicio de muralismo está disponible exclusivamente en{' '}
+                      <strong className="text-neutral-800">Tampico, Ciudad Madero y Altamira</strong>.
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    {allowedCities.map((item) => {
+                      const isCitySelected = formData.cityZone === item.city;
+                      return (
+                        <button
+                          key={item.city}
+                          type="button"
+                          onClick={() =>
+                            setFormData((prev) => ({
+                              ...prev,
+                              cityZone: item.city,
+                            }))
+                          }
+                          className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer ${
+                            isCitySelected
+                              ? 'border-neutral-950 bg-neutral-950 text-white shadow-sm'
+                              : 'border-black/[0.08] bg-white hover:bg-neutral-100 text-neutral-800'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="font-extrabold text-xs">{item.city}</span>
+                            {isCitySelected && <CheckCircle className="w-3.5 h-3.5 text-naho-pink" />}
+                          </div>
+                          <span
+                            className={`text-[10px] block leading-snug ${
+                              isCitySelected ? 'text-neutral-300' : 'text-neutral-500'
+                            }`}
+                          >
+                            {item.desc}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div>
+                    <label
+                      htmlFor={neighborhoodId}
+                      className="text-xs font-semibold text-neutral-700 block mb-1.5"
+                    >
+                      Colonia o zona aproximada en {formData.cityZone} (Opcional):
+                    </label>
+                    <input
+                      id={neighborhoodId}
+                      type="text"
+                      placeholder={`Ej. Col. Minerva en ${formData.cityZone}, o nombre de tu local...`}
+                      value={formData.neighborhoodOrAddress}
+                      onChange={(e) =>
+                        setFormData((prev) => ({ ...prev, neighborhoodOrAddress: e.target.value }))
+                      }
+                      className="w-full px-4 py-2.5 rounded-xl border border-black/[0.1] text-sm bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900"
+                    />
+                  </div>
                 </div>
               </div>
             )}
 
-            {/* Step 2: Dimensiones y Superficie (Apple Mac Configurator Style) */}
+            {/* STEP 2: Dimensiones y Superficie */}
             {currentStep === 2 && (
-              <div className="space-y-7 animate-in fade-in slide-in-from-right-4 duration-400 ease-out">
+              <div className="space-y-7 animate-in fade-in duration-300">
                 <div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-mono uppercase font-bold tracking-wider text-naho-blue">
-                      Paso 2 de 4 • Especificaciones Técnicas
-                    </span>
-                    <span className="text-xs text-neutral-400">Paso obligatorio</span>
-                  </div>
+                  <span className="text-[11px] font-mono uppercase font-bold tracking-wider text-naho-blue">
+                    Paso 2 de 4 • Tamaño del Muro (Obligatorio)
+                  </span>
                   <h3 className="text-xl sm:text-2xl font-black text-neutral-900 tracking-tight mt-1">
-                    Dimensiones y tipo de superficie
+                    Dimensiones aproximadas del mural
                   </h3>
                   <p className="text-sm text-neutral-500 mt-1">
-                    Selecciona el formato más cercano a lo que buscas o especifica medidas personalizadas.
+                    Selecciona un tamaño estimado o escribe las medidas de tu pared.
                   </p>
                 </div>
 
-                {/* Preset Options */}
-                <div className="space-y-3">
-                  <label className="text-xs font-semibold uppercase tracking-wider text-neutral-400 block">
-                    Formatos frecuentes para {formData.projectType.toUpperCase()}:
-                  </label>
-                  <div className="space-y-2.5">
-                    {dimensionPresets[formData.projectType].map((preset, idx) => {
-                      const isSelected = formData.dimensions === preset.label;
-                      return (
-                        <div
-                          key={idx}
-                          onClick={() =>
-                            setFormData((prev) => ({
-                              ...prev,
-                              dimensions: preset.label,
-                              surfaceOrMaterial: preset.surface,
-                            }))
-                          }
-                          className={`p-4 sm:p-4.5 rounded-2xl border transition-all duration-200 cursor-pointer flex items-center justify-between active:scale-[0.99] ${
-                            isSelected
-                              ? 'border-neutral-950 bg-neutral-950 text-white shadow-md'
-                              : 'border-black/[0.07] hover:border-black/20 bg-white hover:bg-neutral-50/60 text-neutral-900'
-                          }`}
-                        >
-                          <div className="flex items-center gap-3.5">
-                            <span
-                              className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
-                                isSelected
-                                  ? 'border-white bg-white text-neutral-950'
-                                  : 'border-neutral-300'
+                <div className="space-y-2.5">
+                  {muralDimensionPresets.map((preset, idx) => {
+                    const isSelected = formData.dimensions === preset.label;
+                    return (
+                      <div
+                        key={idx}
+                        onClick={() =>
+                          setFormData((prev) => ({
+                            ...prev,
+                            dimensions: preset.label,
+                            surfaceOrMaterial: preset.surface,
+                          }))
+                        }
+                        className={`p-4 rounded-2xl border transition-all cursor-pointer flex items-center justify-between ${
+                          isSelected
+                            ? 'border-neutral-950 bg-neutral-950 text-white shadow-md'
+                            : 'border-black/[0.08] bg-white hover:bg-neutral-50 text-neutral-900'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3.5">
+                          <span
+                            className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
+                              isSelected ? 'border-white bg-white' : 'border-neutral-300'
+                            }`}
+                          >
+                            {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-neutral-950" />}
+                          </span>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <p className="font-bold text-sm">{preset.label}</p>
+                              {preset.popular && (
+                                <span
+                                  className={`text-[9px] uppercase font-bold px-2 py-0.5 rounded-full ${
+                                    isSelected
+                                      ? 'bg-white/20 text-white'
+                                      : 'bg-emerald-100 text-emerald-800'
+                                  }`}
+                                >
+                                  Más solicitado
+                                </span>
+                              )}
+                            </div>
+                            <p
+                              className={`text-xs font-mono mt-0.5 ${
+                                isSelected ? 'text-neutral-300' : 'text-neutral-500'
                               }`}
                             >
-                              {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-neutral-950" />}
-                            </span>
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <p className="font-bold text-sm tracking-tight">{preset.label}</p>
-                                {preset.popular && (
-                                  <span
-                                    className={`text-[9px] uppercase font-bold px-2 py-0.5 rounded-full ${
-                                      isSelected
-                                        ? 'bg-white/20 text-white'
-                                        : 'bg-emerald-100 text-emerald-800'
-                                    }`}
-                                  >
-                                    Recomendado
-                                  </span>
-                                )}
-                              </div>
-                              <p
-                                className={`text-xs font-mono mt-0.5 ${
-                                  isSelected ? 'text-neutral-300' : 'text-neutral-500'
-                                }`}
-                              >
-                                Soporte: {preset.surface}
-                              </p>
-                            </div>
+                              Superficie: {preset.surface}
+                            </p>
                           </div>
                         </div>
-                      );
-                    })}
-                  </div>
+                      </div>
+                    );
+                  })}
                 </div>
 
-                {/* Custom dimensions detail */}
-                <div className="pt-2">
+                <div>
                   <label
                     htmlFor={customDimensionsId}
-                    className="text-xs font-semibold uppercase tracking-wider text-neutral-500 block mb-2"
+                    className="text-xs font-semibold uppercase tracking-wider text-neutral-600 block mb-2"
                   >
-                    ¿Medidas exactas o condiciones del espacio? (Opcional):
+                    {formData.dimensions === 'Medidas especiales personalizadas'
+                      ? 'Escribe las medidas aproximadas de tu pared (Obligatorio) *'
+                      : '¿Tienes las medidas exactas o detalles de la pared? (Opcional):'}
                   </label>
                   <input
                     id={customDimensionsId}
                     type="text"
-                    placeholder="Ej. 2.40m alto x 4.10m ancho con ventana central, o talla M en mezclilla..."
+                    required={formData.dimensions === 'Medidas especiales personalizadas'}
+                    placeholder="Ej. 3.50m de ancho x 2.60m de alto, pared interior lisa..."
                     value={formData.customDimensions}
                     onChange={(e) =>
                       setFormData((prev) => ({ ...prev, customDimensions: e.target.value }))
                     }
-                    className="w-full px-4 py-3.5 rounded-2xl border border-black/[0.08] text-sm bg-neutral-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900/10 focus:border-neutral-900 transition-all placeholder:text-neutral-400"
+                    className="w-full px-4 py-3.5 rounded-2xl border border-black/[0.1] text-sm bg-neutral-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900"
                   />
-                  <p className="text-[11px] text-neutral-400 mt-1">
-                    Nahomy evaluará la viabilidad técnica directamente sobre estas notas.
-                  </p>
                 </div>
               </div>
             )}
 
-            {/* Step 3: Concepto, Paleta de Color y Foto de Referencia */}
+            {/* STEP 3: Idea, Cuándo lo quiere / Fecha específica e Imagen Opcional (SIN colores) */}
             {currentStep === 3 && (
-              <div className="space-y-7 animate-in fade-in slide-in-from-right-4 duration-400 ease-out">
+              <div className="space-y-7 animate-in fade-in duration-300">
                 <div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-mono uppercase font-bold tracking-wider text-naho-orange">
-                      Paso 3 de 4 • Visión Artística & Color
-                    </span>
-                    <span className="text-xs text-neutral-400">Paso obligatorio</span>
-                  </div>
+                  <span className="text-[11px] font-mono uppercase font-bold tracking-wider text-naho-orange">
+                    Paso 3 de 4 • Idea, Fecha & Foto Opcional (Obligatorio)
+                  </span>
                   <h3 className="text-xl sm:text-2xl font-black text-neutral-900 tracking-tight mt-1">
-                    Concepto, atmósfera cromática y foto de referencia
+                    ¿Cómo quieres tu mural y para cuándo lo buscas?
                   </h3>
                   <p className="text-sm text-neutral-500 mt-1">
-                    Comparte tu visión creativa, elige la atmósfera de color deseada y añade bocetos o referencias.
+                    Describe tu idea, indícanos para cuándo lo quieres y sube una imagen opcional de referencia.
                   </p>
                 </div>
 
-                {/* --- ARTISTIC COLOR PALETTE SELECTOR (Moodboard Creativo) --- */}
-                <div>
-                  <label className="text-xs font-bold uppercase tracking-wider text-neutral-800 block mb-2.5 flex items-center gap-1.5">
-                    <Palette className="w-4 h-4 text-naho-pink" />
-                    <span>Atmósfera Cromática & Paleta Sugerida:</span>
-                  </label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {artisticPalettes.map((palette) => {
-                      const isSelected = formData.colorPalette?.startsWith(palette.name);
-                      return (
-                        <div
-                          key={palette.id}
-                          onClick={() =>
-                            setFormData((prev) => ({
-                              ...prev,
-                              colorPalette: `${palette.name} (${palette.description})`,
-                            }))
-                          }
-                          className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex flex-col justify-between gap-2.5 ${
-                            isSelected
-                              ? 'border-neutral-950 bg-neutral-950 text-white shadow-md'
-                              : 'border-black/[0.06] bg-white hover:bg-neutral-50/80 text-neutral-900'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between">
-                            <span className="font-bold text-xs tracking-tight">{palette.name}</span>
-                            <div className="flex items-center gap-1">
-                              {palette.colors.map((color, cIdx) => (
-                                <span
-                                  key={cIdx}
-                                  className="w-3.5 h-3.5 rounded-full ring-1 ring-black/10 shrink-0"
-                                  style={{ backgroundColor: color }}
-                                />
-                              ))}
-                            </div>
-                          </div>
-                          <p
-                            className={`text-[11px] leading-snug ${
-                              isSelected ? 'text-neutral-300' : 'text-neutral-500'
-                            }`}
-                          >
-                            {palette.description}
-                          </p>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Suggestion tags (Apple Music / iOS Search Chips) */}
+                {/* Idea description */}
                 <div>
                   <label className="text-xs font-semibold uppercase tracking-wider text-neutral-400 block mb-2">
-                    Ideas y elementos populares (Haz clic para agregar a tu idea):
+                    Ideas rápidas (Haz clic para agregar):
                   </label>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap gap-2 mb-3">
                     {themeIdeaPresets.map((tag) => (
                       <button
                         key={tag}
@@ -699,52 +719,139 @@ export function QuoteStepperForm({
                               : tag,
                           }))
                         }
-                        className="text-xs px-3.5 py-1.5 rounded-full border border-black/[0.06] bg-neutral-100/70 hover:bg-neutral-200 text-neutral-700 transition-all font-medium cursor-pointer active:scale-95"
+                        className="text-xs px-3 py-1.5 rounded-full border border-black/[0.06] bg-neutral-100 hover:bg-neutral-200 text-neutral-700 font-medium cursor-pointer"
                       >
                         + {tag}
                       </button>
                     ))}
                   </div>
-                </div>
 
-                {/* Theme text area */}
-                <div>
                   <label
                     htmlFor={themeDetailsId}
-                    className="text-xs font-semibold uppercase tracking-wider text-neutral-800 block mb-2 flex items-center justify-between"
+                    className="text-xs font-bold uppercase tracking-wider text-neutral-800 block mb-2 flex items-center justify-between"
                   >
-                    <span>Describe tu idea o temática *</span>
+                    <span>Describe cómo quieres que sea tu mural (Obligatorio) *</span>
                     <span className="text-[11px] font-mono font-normal text-neutral-400">
-                      {formData.themeAndDetails.trim().length} caracteres (mínimo 4)
+                      {formData.themeAndDetails.trim().length} caracteres (mín. 5)
                     </span>
                   </label>
                   <textarea
                     id={themeDetailsId}
                     rows={3}
                     required
-                    placeholder="Ej. Quiero una obra botánica con mariposas monarca y flores tropicales para la pared principal del restaurante..."
+                    placeholder="Ej. Quiero un mural para mi negocio en Tampico con elementos botánicos, flores y el nombre de nuestra marca..."
                     value={formData.themeAndDetails}
                     onChange={(e) =>
                       setFormData((prev) => ({ ...prev, themeAndDetails: e.target.value }))
                     }
-                    className="w-full px-4 py-3.5 rounded-2xl border border-black/[0.08] text-sm bg-neutral-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900/10 focus:border-neutral-900 transition-all leading-relaxed placeholder:text-neutral-400"
+                    className="w-full px-4 py-3.5 rounded-2xl border border-black/[0.1] text-sm bg-neutral-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900 leading-relaxed"
                   />
                 </div>
 
-                {/* --- REFERENCE IMAGE UPLOADER (Apple AirDrop / Photos Widget Style) --- */}
+                {/* ¿Cuándo lo quiere o si tiene una fecha específica? */}
+                <div className="p-5 rounded-3xl bg-neutral-50 border border-black/[0.06] space-y-4">
+                  <label className="text-xs font-bold uppercase tracking-wider text-neutral-800 flex items-center gap-1.5">
+                    <Calendar className="w-4 h-4 text-naho-orange" />
+                    <span>¿Cuándo quieres tu mural o tienes una fecha específica? (Obligatorio) *</span>
+                  </label>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          datePreferenceType: 'especifica',
+                          deadlineDate: prev.deadlineDate.includes('-') ? prev.deadlineDate : '',
+                        }))
+                      }
+                      className={`p-3 rounded-2xl border text-left text-xs font-bold cursor-pointer transition-all ${
+                        formData.datePreferenceType === 'especifica'
+                          ? 'border-neutral-950 bg-neutral-950 text-white'
+                          : 'border-black/[0.08] bg-white text-neutral-700'
+                      }`}
+                    >
+                      📅 Tengo una fecha específica
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          datePreferenceType: 'flexible',
+                          deadlineDate: 'Lo antes posible (Este mes)',
+                        }))
+                      }
+                      className={`p-3 rounded-2xl border text-left text-xs font-bold cursor-pointer transition-all ${
+                        formData.datePreferenceType === 'flexible'
+                          ? 'border-neutral-950 bg-neutral-950 text-white'
+                          : 'border-black/[0.08] bg-white text-neutral-700'
+                      }`}
+                    >
+                      ✨ Fecha flexible / Próximas semanas
+                    </button>
+                  </div>
+
+                  {formData.datePreferenceType === 'especifica' ? (
+                    <div>
+                      <label
+                        htmlFor={deadlineDateId}
+                        className="text-xs font-semibold text-neutral-600 block mb-1.5"
+                      >
+                        Selecciona la fecha deseada: *
+                      </label>
+                      <input
+                        id={deadlineDateId}
+                        type="date"
+                        required
+                        value={
+                          formData.deadlineDate.includes('-') ? formData.deadlineDate : ''
+                        }
+                        onChange={(e) =>
+                          setFormData((prev) => ({ ...prev, deadlineDate: e.target.value }))
+                        }
+                        className="w-full sm:w-64 px-4 py-2.5 rounded-xl border border-black/[0.1] text-sm bg-white font-mono"
+                      />
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {[
+                        'Lo antes posible (Este mes)',
+                        'En las próximas 2 a 3 semanas',
+                        'Para el próximo mes',
+                      ].map((flexLabel) => (
+                        <button
+                          key={flexLabel}
+                          type="button"
+                          onClick={() =>
+                            setFormData((prev) => ({ ...prev, deadlineDate: flexLabel }))
+                          }
+                          className={`px-3.5 py-1.5 rounded-full text-xs font-semibold cursor-pointer ${
+                            formData.deadlineDate === flexLabel
+                              ? 'bg-naho-pink text-white'
+                              : 'bg-white border border-black/[0.08] text-neutral-700'
+                          }`}
+                        >
+                          {flexLabel}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Imagen Opcional de cómo quiere su mural */}
                 <div className="p-6 rounded-[2rem] bg-neutral-50/70 border border-black/[0.06]">
                   <div className="flex items-center justify-between mb-2">
                     <label className="text-xs font-bold uppercase tracking-wider text-neutral-800 flex items-center gap-1.5">
                       <ImageIcon className="w-4 h-4 text-naho-pink" />
-                      <span>Foto o Boceto de Referencia (Opcional)</span>
+                      <span>Imagen sobre cómo quieres tu mural (Opcional)</span>
                     </label>
                   </div>
 
                   <p className="text-xs text-neutral-500 mb-4 leading-relaxed">
-                    Sube una foto de referencia, diseño o boceto desde tu dispositivo. Nahomy la recibirá en su panel para valorar el tiempo y técnica requerida.
+                    Puedes adjuntar una imagen de referencia, boceto o foto del muro donde quieres tu mural.
                   </p>
 
-                  {/* If user uploaded a photo file */}
                   {formData.referenceImagePreview ? (
                     <div className="relative bg-white rounded-2xl p-4 border border-black/[0.06] shadow-xs flex items-center gap-4">
                       <img
@@ -755,13 +862,10 @@ export function QuoteStepperForm({
                       <div className="flex-1 min-w-0">
                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
                           <CheckCircle className="w-3 h-3" />
-                          Foto de referencia lista
+                          Imagen adjunta
                         </span>
                         <p className="text-sm font-bold text-neutral-900 truncate mt-1">
                           {formData.referenceImageName || 'Imagen seleccionada'}
-                        </p>
-                        <p className="text-xs text-neutral-400 mt-0.5">
-                          Lista para enviarse al panel del estudio
                         </p>
                       </div>
 
@@ -788,7 +892,6 @@ export function QuoteStepperForm({
                       </div>
                     </div>
                   ) : (
-                    /* Dropzone */
                     <div
                       onDragOver={(e) => {
                         e.preventDefault();
@@ -796,7 +899,7 @@ export function QuoteStepperForm({
                       }}
                       onDragLeave={() => setIsDragging(false)}
                       onDrop={handleDrop}
-                      className={`relative border-2 border-dashed rounded-2xl p-7 text-center transition-all cursor-pointer select-none ${
+                      className={`relative border-2 border-dashed rounded-2xl p-6 text-center transition-all cursor-pointer select-none ${
                         isDragging
                           ? 'border-neutral-950 bg-white scale-[1.01]'
                           : 'border-black/15 hover:border-neutral-950 bg-white/80 hover:bg-white'
@@ -805,75 +908,48 @@ export function QuoteStepperForm({
                       <input
                         id={imageUploadInputId}
                         type="file"
-                        accept="image/png,image/jpeg,image/jpg,image/webp,image/gif"
+                        accept="image/png,image/jpeg,image/jpg,image/webp"
                         onChange={handleImageChange}
                         className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                       />
-                      <div className="flex flex-col items-center justify-center gap-2.5">
-                        <div className="p-3.5 rounded-full bg-black/[0.04] text-neutral-900">
+                      <div className="flex flex-col items-center justify-center gap-2">
+                        <div className="p-3 rounded-full bg-black/[0.04] text-neutral-900">
                           <Upload className="w-5 h-5" />
                         </div>
-                        <div>
-                          <p className="text-sm font-bold text-neutral-800">
-                            Arrastra tu imagen aquí o{' '}
-                            <span className="text-neutral-950 underline decoration-2">
-                              haz clic para explorar
-                            </span>
-                          </p>
-                          <p className="text-xs text-neutral-400 mt-1 font-mono">
-                            Formatos soportados: PNG, JPG, WEBP (hasta 10 MB)
-                          </p>
-                        </div>
+                        <p className="text-sm font-bold text-neutral-800">
+                          Arrastra una imagen aquí o{' '}
+                          <span className="text-naho-pink underline">haz clic para subir foto</span>
+                        </p>
+                        <p className="text-xs text-neutral-400 font-mono">
+                          Opcional • PNG, JPG, WEBP (hasta 10 MB)
+                        </p>
                       </div>
                     </div>
                   )}
                 </div>
-
-                {/* Deadline date */}
-                <div>
-                  <label
-                    htmlFor={deadlineDateId}
-                    className="text-xs font-semibold uppercase tracking-wider text-neutral-500 block mb-2"
-                  >
-                    ¿Fecha límite o inauguración? (Opcional):
-                  </label>
-                  <input
-                    id={deadlineDateId}
-                    type="date"
-                    value={formData.deadlineDate}
-                    onChange={(e) =>
-                      setFormData((prev) => ({ ...prev, deadlineDate: e.target.value }))
-                    }
-                    className="w-full sm:w-64 px-4 py-2.5 rounded-2xl border border-black/[0.08] text-sm bg-neutral-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900/10 focus:border-neutral-900 transition-all font-mono"
-                  />
-                </div>
               </div>
             )}
 
-            {/* Step 4: Datos de Contacto y Canal de Comunicación (Apple Pay Checkout Style) */}
+            {/* STEP 4: Nombre, Correo y Número de Teléfono (SIN "Canal de contacto preferido") */}
             {currentStep === 4 && (
-              <div className="space-y-7 animate-in fade-in slide-in-from-right-4 duration-400 ease-out">
+              <div className="space-y-7 animate-in fade-in duration-300">
                 <div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-mono uppercase font-bold tracking-wider text-emerald-600">
-                      Paso 4 de 4 • Datos de Contacto
-                    </span>
-                    <span className="text-xs text-neutral-400">Paso final</span>
-                  </div>
+                  <span className="text-[11px] font-mono uppercase font-bold tracking-wider text-emerald-600">
+                    Paso 4 de 4 • Tus Datos de Contacto (Obligatorio)
+                  </span>
                   <h3 className="text-xl sm:text-2xl font-black text-neutral-900 tracking-tight mt-1">
-                    ¿Dónde deseas recibir tu cotización?
+                    Nombre, correo y número de teléfono
                   </h3>
                   <p className="text-sm text-neutral-500 mt-1">
-                    Nahomy revisará tus especificaciones y te contactará con el presupuesto formal y boceto inicial.
+                    Ingresa tus datos para enviarte la confirmación de tu cotización de mural.
                   </p>
                 </div>
 
-                {/* Name, Email and Phone */}
                 <div className="space-y-4">
                   <div>
                     <label
                       htmlFor={clientNameId}
-                      className="text-xs font-semibold uppercase tracking-wider text-neutral-500 block mb-2"
+                      className="text-xs font-bold uppercase tracking-wider text-neutral-700 block mb-2"
                     >
                       Tu Nombre Completo *
                     </label>
@@ -883,12 +959,13 @@ export function QuoteStepperForm({
                         id={clientNameId}
                         type="text"
                         required
-                        placeholder="Ej. Andrea Gómez"
+                        autoComplete="name"
+                        placeholder="Ej. Mariana Garza"
                         value={formData.clientName}
                         onChange={(e) =>
                           setFormData((prev) => ({ ...prev, clientName: e.target.value }))
                         }
-                        className="w-full pl-11 pr-4 py-3 rounded-2xl border border-black/[0.08] text-sm bg-neutral-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900/10 focus:border-neutral-900 transition-all"
+                        className="w-full pl-11 pr-4 py-3 rounded-2xl border border-black/[0.1] text-base bg-neutral-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900"
                       />
                     </div>
                   </div>
@@ -897,7 +974,7 @@ export function QuoteStepperForm({
                     <div>
                       <label
                         htmlFor={clientEmailId}
-                        className="text-xs font-semibold uppercase tracking-wider text-neutral-500 block mb-2"
+                        className="text-xs font-bold uppercase tracking-wider text-neutral-700 block mb-2"
                       >
                         Correo Electrónico *
                       </label>
@@ -907,25 +984,27 @@ export function QuoteStepperForm({
                           id={clientEmailId}
                           type="email"
                           required
-                          placeholder="andrea@ejemplo.com"
+                          autoComplete="email"
+                          spellCheck={false}
+                          placeholder="tu@correo.com"
                           value={formData.clientEmail}
                           onChange={(e) =>
                             setFormData((prev) => ({ ...prev, clientEmail: e.target.value }))
                           }
-                          className="w-full pl-11 pr-4 py-3 rounded-2xl border border-black/[0.08] text-sm bg-neutral-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900/10 focus:border-neutral-900 transition-all font-mono"
+                          className="w-full pl-11 pr-4 py-3 rounded-2xl border border-black/[0.1] text-base bg-neutral-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900 font-mono"
                         />
                       </div>
-                      <p className="text-[10px] text-neutral-400 mt-1">
-                        Para enviarte la propuesta formal y boceto
+                      <p className="text-[11px] text-neutral-400 mt-1">
+                        Recibirás la confirmación de envío en este correo
                       </p>
                     </div>
 
                     <div>
                       <label
                         htmlFor={clientPhoneId}
-                        className="text-xs font-semibold uppercase tracking-wider text-neutral-500 block mb-2"
+                        className="text-xs font-bold uppercase tracking-wider text-neutral-700 block mb-2"
                       >
-                        Teléfono / WhatsApp *
+                        Número de Teléfono *
                       </label>
                       <div className="relative">
                         <Phone className="w-4 h-4 text-neutral-400 absolute left-4 top-3.5" />
@@ -933,114 +1012,19 @@ export function QuoteStepperForm({
                           id={clientPhoneId}
                           type="tel"
                           required
+                          autoComplete="tel"
                           placeholder="Ej. 833 123 4567"
                           value={formData.clientPhone}
                           onChange={(e) =>
                             setFormData((prev) => ({ ...prev, clientPhone: e.target.value }))
                           }
-                          className="w-full pl-11 pr-4 py-3 rounded-2xl border border-black/[0.08] text-sm bg-neutral-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900/10 focus:border-neutral-900 transition-all font-mono"
+                          className="w-full pl-11 pr-4 py-3 rounded-2xl border border-black/[0.1] text-base bg-neutral-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900 font-mono"
                         />
                       </div>
-                      <p className="text-[10px] text-neutral-400 mt-1">
-                        Para coordinar dudas inmediatas
+                      <p className="text-[11px] text-neutral-400 mt-1">
+                        10 dígitos para dar seguimiento a tu proyecto
                       </p>
                     </div>
-                  </div>
-                </div>
-
-                {/* Preferred Contact Method Pill Toggle */}
-                <div>
-                  <label className="text-xs font-semibold uppercase tracking-wider text-neutral-500 block mb-2">
-                    ¿Cómo prefieres que Nahomy se comunique contigo?:
-                  </label>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                    {[
-                      {
-                        id: 'whatsapp' as PreferredContactMethod,
-                        label: 'WhatsApp',
-                        desc: 'Respuesta ágil por chat',
-                        icon: MessageCircle,
-                      },
-                      {
-                        id: 'email' as PreferredContactMethod,
-                        label: 'Correo Electrónico',
-                        desc: 'Propuesta formal en PDF',
-                        icon: Mail,
-                      },
-                      {
-                        id: 'call' as PreferredContactMethod,
-                        label: 'Llamada Directa',
-                        desc: 'Consulta telefónica',
-                        icon: Phone,
-                      },
-                    ].map((method) => {
-                      const isSelected = formData.preferredContact === method.id;
-                      const Icon = method.icon;
-                      return (
-                        <div
-                          key={method.id}
-                          onClick={() =>
-                            setFormData((prev) => ({ ...prev, preferredContact: method.id }))
-                          }
-                          className={`p-3.5 rounded-2xl border transition-all cursor-pointer flex flex-col gap-1.5 ${
-                            isSelected
-                              ? 'border-neutral-950 bg-neutral-950 text-white shadow-xs'
-                              : 'border-black/[0.06] bg-white hover:bg-neutral-50 text-neutral-800'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2">
-                            <Icon className={`w-3.5 h-3.5 ${isSelected ? 'text-white' : 'text-neutral-500'}`} />
-                            <span className="font-bold text-xs">{method.label}</span>
-                          </div>
-                          <span
-                            className={`text-[10px] ${isSelected ? 'text-neutral-300' : 'text-neutral-400'}`}
-                          >
-                            {method.desc}
-                          </span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Instant Zone Pills */}
-                <div>
-                  <label
-                    htmlFor={clientLocationId}
-                    className="text-xs font-semibold uppercase tracking-wider text-neutral-500 block mb-2"
-                  >
-                    Zona de entrega o instalación:
-                  </label>
-                  <div className="flex flex-wrap gap-2 mb-3">
-                    {quickZones.map((zone) => (
-                      <button
-                        key={zone}
-                        type="button"
-                        onClick={() =>
-                          setFormData((prev) => ({ ...prev, clientLocation: zone }))
-                        }
-                        className={`text-xs px-3.5 py-1.5 rounded-full font-medium transition-all cursor-pointer ${
-                          formData.clientLocation === zone
-                            ? 'bg-neutral-950 text-white shadow-xs'
-                            : 'bg-neutral-100 hover:bg-neutral-200 text-neutral-700'
-                        }`}
-                      >
-                        {zone}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="relative">
-                    <MapPin className="w-4 h-4 text-neutral-400 absolute left-4 top-3.5" />
-                    <input
-                      id={clientLocationId}
-                      type="text"
-                      value={formData.clientLocation}
-                      onChange={(e) =>
-                        setFormData((prev) => ({ ...prev, clientLocation: e.target.value }))
-                      }
-                      placeholder="Ej. Tampico, Cd. Madero, Altamira o Envío nacional"
-                      className="w-full pl-11 pr-4 py-3 rounded-2xl border border-black/[0.08] text-sm bg-neutral-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900/10 focus:border-neutral-900 transition-all"
-                    />
                   </div>
                 </div>
 
@@ -1049,7 +1033,7 @@ export function QuoteStepperForm({
                     htmlFor={clientNotesId}
                     className="text-xs font-semibold uppercase tracking-wider text-neutral-500 block mb-2"
                   >
-                    Comentario adicional o solicitud especial (Opcional):
+                    Comentarios adicionales (Opcional):
                   </label>
                   <input
                     id={clientNotesId}
@@ -1058,20 +1042,20 @@ export function QuoteStepperForm({
                     onChange={(e) =>
                       setFormData((prev) => ({ ...prev, clientNotes: e.target.value }))
                     }
-                    placeholder="Ej. Tengo fotos de referencia adicionales o prefiero entrega en fin de semana"
-                    className="w-full px-4 py-3 rounded-2xl border border-black/[0.08] text-sm bg-neutral-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900/10 focus:border-neutral-900 transition-all"
+                    placeholder="Ej. El local está en segundo piso, o horario preferido para visita..."
+                    className="w-full px-4 py-3 rounded-2xl border border-black/[0.1] text-sm bg-neutral-50/50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900"
                   />
                 </div>
               </div>
             )}
 
-            {/* Stepper Footer Controls (Apple Pill Navigation) */}
+            {/* Stepper Controls */}
             <div className="mt-10 pt-6 border-t border-black/[0.05] flex items-center justify-between">
               {currentStep > 1 ? (
                 <button
                   type="button"
                   onClick={() => setCurrentStep((prev) => prev - 1)}
-                  className="px-5 py-2.5 rounded-full border border-black/[0.08] text-neutral-700 hover:bg-neutral-100 font-semibold text-xs flex items-center gap-2 transition-all cursor-pointer active:scale-95 select-none"
+                  className="px-5 py-2.5 rounded-full border border-black/[0.08] text-neutral-700 hover:bg-neutral-100 font-semibold text-xs flex items-center gap-2 transition-all cursor-pointer active:scale-95"
                 >
                   <ArrowLeft className="w-3.5 h-3.5" />
                   <span>Anterior</span>
@@ -1084,10 +1068,14 @@ export function QuoteStepperForm({
                 <button
                   type="button"
                   disabled={!isStepValid(currentStep)}
-                  onClick={() => setCurrentStep((prev) => prev + 1)}
-                  className={`px-7 py-3 rounded-full font-semibold text-xs flex items-center gap-2 transition-all cursor-pointer active:scale-95 select-none ${
+                  onClick={() => {
+                    if (isStepValid(currentStep)) {
+                      setCurrentStep((prev) => prev + 1);
+                    }
+                  }}
+                  className={`px-7 py-3 rounded-full font-semibold text-xs flex items-center gap-2 transition-all active:scale-95 ${
                     isStepValid(currentStep)
-                      ? 'bg-neutral-950 hover:bg-neutral-800 text-white shadow-sm'
+                      ? 'bg-neutral-950 hover:bg-neutral-800 text-white shadow-sm cursor-pointer'
                       : 'bg-neutral-200 text-neutral-400 cursor-not-allowed'
                   }`}
                 >
@@ -1099,20 +1087,20 @@ export function QuoteStepperForm({
                   type="button"
                   disabled={!isFormComplete}
                   onClick={handleSubmitQuote}
-                  className={`px-7 py-3 rounded-full font-semibold text-xs flex items-center gap-2 transition-all cursor-pointer active:scale-95 select-none ${
+                  className={`px-7 py-3 rounded-full font-semibold text-xs flex items-center gap-2 transition-all active:scale-95 ${
                     isFormComplete
-                      ? 'bg-neutral-950 hover:bg-neutral-800 text-white shadow-md'
+                      ? 'bg-neutral-950 hover:bg-naho-pink text-white shadow-md cursor-pointer'
                       : 'bg-neutral-200 text-neutral-400 cursor-not-allowed'
                   }`}
                 >
-                  <span>Registrar y Enviar Cotización</span>
+                  <span>Enviar Cotización de Mural</span>
                   <ArrowRight className="w-3.5 h-3.5" />
                 </button>
               )}
             </div>
           </div>
 
-          {/* Persistent Live Summary (Right Column) */}
+          {/* Right Column: Live Summary */}
           <div className="lg:col-span-5">
             <LiveSummary
               formData={formData}
@@ -1121,111 +1109,57 @@ export function QuoteStepperForm({
               isFormValid={isFormComplete}
               onSubmitQuote={handleSubmitQuote}
               referenceArtTitle={referenceArtTitle}
-              formattedMessage={buildOfficialSummary()}
             />
           </div>
         </div>
       </div>
 
-      {/* Confirmation Modal: Official Studio Submission Flow */}
+      {/* Clean Client Confirmation Modal */}
       {showSuccessModal && createdTicket && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/70 backdrop-blur-2xl animate-in fade-in duration-200">
-          <div className="bg-white rounded-[2.5rem] p-7 sm:p-9 max-w-lg w-full border border-black/[0.08] shadow-[0_30px_90px_rgba(0,0,0,0.35)] space-y-6">
-            <div className="text-center">
-              <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center mx-auto mb-3">
-                <Check className="w-8 h-8" />
-              </div>
-              <span className="text-[11px] font-mono font-bold text-neutral-500 uppercase tracking-wider block">
-                FOLIO DEL PROYECTO: {createdTicket.folio}
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-2xl animate-in fade-in duration-200">
+          <div className="bg-white rounded-[2.5rem] p-7 sm:p-9 max-w-lg w-full border border-black/[0.08] shadow-[0_30px_90px_rgba(0,0,0,0.4)] space-y-6 text-center">
+            <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-700 flex items-center justify-center mx-auto">
+              <Check className="w-8 h-8" />
+            </div>
+
+            <div className="space-y-2">
+              <span className="text-[11px] font-mono font-bold text-emerald-700 uppercase tracking-wider block">
+                FOLIO DE SOLICITUD: {createdTicket.folio}
               </span>
-              <h3 className="text-2xl font-black text-neutral-900 tracking-tight mt-1">
-                ¡Cotización Registrada con Éxito!
+              <h3 className="text-2xl font-black text-neutral-900 tracking-tight">
+                ¡Tu Cotización se Envió con Éxito!
               </h3>
-              <p className="text-neutral-500 text-xs mt-2 leading-relaxed">
-                Tu solicitud ha sido ingresada en el sistema del taller para revisión por Nahomy.
+              <p className="text-neutral-500 text-xs sm:text-sm leading-relaxed">
+                Hemos enviado un correo de confirmación a{' '}
+                <strong className="text-neutral-800">{formData.clientEmail}</strong>. Nahomy revisará los detalles de tu mural en{' '}
+                <strong className="text-neutral-800">{formData.cityZone}</strong> y se pondrá en contacto contigo muy pronto.
               </p>
             </div>
 
-            {/* Workflow routes explanation */}
-            <div className="p-4 rounded-2xl bg-neutral-50 border border-black/[0.05] space-y-2.5 text-xs">
-              <div className="flex items-start gap-2.5">
-                <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                <div>
-                  <span className="font-bold text-neutral-900 block">Enviado al Panel de Estudio de Nahomy</span>
-                  <span className="text-neutral-500 text-[11px]">
-                    Listo para que la artista revise las medidas y foto de referencia.
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-2.5">
-                <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                <div>
-                  <span className="font-bold text-neutral-900 block">Notificación por Correo Electrónico</span>
-                  <span className="text-neutral-500 text-[11px]">
-                    Copia enviada a <strong>{formData.clientEmail}</strong> y <strong>nahomy@nahocraft.com</strong>.
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex items-start gap-2.5">
-                <CheckCircle className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                <div>
-                  <span className="font-bold text-neutral-900 block">
-                    Canal de Respuesta Elegido: {formData.preferredContact.toUpperCase()}
-                  </span>
-                  <span className="text-neutral-500 text-[11px]">
-                    Nahomy se comunicará directamente contigo en un plazo de 24 a 48 horas.
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Production Demo Showcase Button: "Ver cómo lo recibe Nahomy en su Panel" */}
-            <div className="p-3.5 rounded-2xl bg-gradient-to-r from-naho-pink/10 via-naho-orange/10 to-naho-blue/10 border border-naho-pink/20 text-center">
-              <p className="text-xs font-bold text-neutral-900 mb-1">
-                🚀 Demostración de Arquitectura y Flujo:
+            <div className="p-4 rounded-2xl bg-neutral-50 border border-black/[0.06] text-left text-xs space-y-1.5 text-neutral-600">
+              <p>
+                <strong className="text-neutral-900">Tipo de Mural:</strong>{' '}
+                {createdTicket.formData.muralCategory}
               </p>
-              <p className="text-[11px] text-neutral-600 mb-2.5 leading-snug">
-                Puedes ver en tiempo real cómo Nahomy recibe este ticket en el panel administrativo del taller.
+              <p>
+                <strong className="text-neutral-900">Ubicación:</strong>{' '}
+                {createdTicket.formData.cityZone}, Tamaulipas
               </p>
-              <button
-                type="button"
-                onClick={() => setShowAdminPanelModal(true)}
-                className="w-full py-2.5 px-4 rounded-full bg-neutral-950 hover:bg-neutral-800 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-xs transition-all active:scale-95 cursor-pointer"
-              >
-                <Inbox className="w-4 h-4 text-naho-pink" />
-                <span>🎨 Ver cómo lo recibe Nahomy en su Panel de Estudio</span>
-              </button>
+              <p>
+                <strong className="text-neutral-900">Fecha solicitada:</strong>{' '}
+                {createdTicket.formData.deadlineDate}
+              </p>
             </div>
 
-            {/* Action buttons */}
-            <div className="flex flex-col gap-2 pt-2">
-              <button
-                onClick={openWhatsAppFallback}
-                className="w-full py-3 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs flex items-center justify-center gap-2 shadow-xs transition-all active:scale-95 cursor-pointer"
-              >
-                <MessageCircle className="w-4 h-4" />
-                <span>Abrir también copia directa en WhatsApp (Opcional)</span>
-              </button>
-
-              <button
-                onClick={() => setShowSuccessModal(false)}
-                className="w-full py-2.5 rounded-full border border-black/[0.08] text-neutral-600 hover:bg-neutral-100 font-semibold text-xs transition-all cursor-pointer"
-              >
-                Cerrar ventana
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => setShowSuccessModal(false)}
+              className="w-full py-3.5 px-6 rounded-full bg-neutral-950 hover:bg-neutral-800 text-white font-bold text-xs transition-all cursor-pointer"
+            >
+              Entendido, volver al sitio
+            </button>
           </div>
         </div>
-      )}
-
-      {/* Admin Studio Panel Simulation Modal */}
-      {showAdminPanelModal && createdTicket && (
-        <StudioAdminPreviewModal
-          currentTicket={createdTicket}
-          onClose={() => setShowAdminPanelModal(false)}
-        />
       )}
     </section>
   );

@@ -1,12 +1,14 @@
 import { localAssets } from '../../assets';
+import { useSiteData } from '../../context/SiteDataContext';
 import { SocialLinks } from '../studio/SocialLinks';
 import { ScheduleStatusBadge } from './ScheduleStatusBadge';
-import { MapPin, Phone, MessageCircle, Sparkles } from 'lucide-react';
+import { MapPin, Phone, Sparkles, Mail, Lock } from 'lucide-react';
 
 export function Footer() {
+  const { siteConfig, navigateTo } = useSiteData();
+
   return (
     <footer className="bg-slate-950 text-white pt-16 pb-12 border-t border-slate-900 relative overflow-hidden">
-      {/* Decorative glow */}
       <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-32 bg-gradient-to-r from-naho-pink/10 via-naho-blue/10 to-naho-orange/10 blur-3xl rounded-full pointer-events-none" />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
@@ -24,13 +26,13 @@ export function Footer() {
                   Nahocraft
                 </span>
                 <span className="text-xs uppercase tracking-widest text-naho-pink font-bold -mt-1 block">
-                  Centro de Arte • Tampico
+                  Centro de Arte • Tampico, Madero y Altamira
                 </span>
               </div>
             </div>
 
             <p className="text-sm text-slate-400 max-w-sm leading-relaxed mb-6">
-              Espacio artístico fundado por Nahomy dedicado al muralismo arquitectónico, intervención textil artesanal y creación de piezas de autor con identidad viva en Tampico, Tamaulipas.
+              Centro de Arte fundado por Nahomy en Tampico, Tamaulipas. Cursos mensuales de pintura en línea en vivo, clases presenciales para niños, adolescentes y adultos, y muralismo personalizado en Tampico, Ciudad Madero y Altamira.
             </p>
 
             <ScheduleStatusBadge className="bg-slate-900 text-slate-200 border-slate-800" />
@@ -40,32 +42,32 @@ export function Footer() {
           <div className="lg:col-span-3">
             <h4 className="font-extrabold text-sm uppercase tracking-wider text-slate-300 mb-4 flex items-center gap-2">
               <Sparkles className="w-3.5 h-3.5 text-naho-pink" />
-              Navegación Rápida
+              Secciones
             </h4>
             <ul className="space-y-2.5 text-sm text-slate-400">
               <li>
+                <a href="#cursos" className="hover:text-naho-pink transition-colors">
+                  Cursos Mensuales Online
+                </a>
+              </li>
+              <li>
                 <a href="#galeria" className="hover:text-naho-pink transition-colors">
-                  Galería de Obras Reales
+                  Galería de Murales por Categoría
                 </a>
               </li>
               <li>
                 <a href="#cotizador" className="hover:text-naho-pink transition-colors">
-                  Cotizador Interactivo
+                  Cotizar Mural (Tampico, Madero y Altamira)
+                </a>
+              </li>
+              <li>
+                <a href="#sobre-mi" className="hover:text-naho-pink transition-colors">
+                  Sobre Mí (Nahomy)
                 </a>
               </li>
               <li>
                 <a href="#estudio" className="hover:text-naho-pink transition-colors">
-                  Conoce el Taller
-                </a>
-              </li>
-              <li>
-                <a href="#horarios" className="hover:text-naho-pink transition-colors">
-                  Horarios de Atención
-                </a>
-              </li>
-              <li>
-                <a href="#ubicacion" className="hover:text-naho-pink transition-colors">
-                  Ubicación & Mapas
+                  Taller Físico & Clases Presenciales
                 </a>
               </li>
             </ul>
@@ -80,24 +82,20 @@ export function Footer() {
             <div className="space-y-3 text-sm text-slate-400">
               <p className="flex items-start gap-2.5">
                 <MapPin className="w-4 h-4 text-naho-pink shrink-0 mt-0.5" />
-                <span>
-                  Avenida Ayuntamiento 3 - 109, Minerva, 89120 Tampico, Tamps., México
-                </span>
+                <span>{siteConfig.studioAddress}</span>
+              </p>
+              <p className="flex items-center gap-2.5">
+                <Mail className="w-4 h-4 text-naho-orange shrink-0" />
+                <a
+                  href={`mailto:${siteConfig.adminEmail}`}
+                  className="hover:text-white transition-colors font-mono text-xs"
+                >
+                  {siteConfig.adminEmail}
+                </a>
               </p>
               <p className="flex items-center gap-2.5">
                 <Phone className="w-4 h-4 text-naho-blue shrink-0" />
-                <span>+52 833 365 5622</span>
-              </p>
-              <p className="flex items-center gap-2.5">
-                <MessageCircle className="w-4 h-4 text-emerald-400 shrink-0" />
-                <a
-                  href="https://wa.me/528333655622"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-emerald-400 hover:underline font-semibold"
-                >
-                  Chat directo de WhatsApp
-                </a>
+                <span>{siteConfig.studioPhone}</span>
               </p>
               <div className="pt-2">
                 <SocialLinks layout="row" />
@@ -106,11 +104,19 @@ export function Footer() {
           </div>
         </div>
 
-        {/* Bottom Credits */}
+        {/* Bottom Credits & Discreet Admin Link */}
         <div className="pt-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500">
           <p>
-            © {new Date().getFullYear()} Nahocraft - Centro de Arte. Todos los derechos reservados.
+            © {new Date().getFullYear()} Nahocraft - Centro de Arte ({siteConfig.adminEmail}). Todos los derechos reservados.
           </p>
+          <button
+            type="button"
+            onClick={() => navigateTo('/naho')}
+            className="inline-flex items-center gap-1.5 text-slate-600 hover:text-slate-400 transition-colors cursor-pointer"
+          >
+            <Lock className="w-3 h-3" />
+            <span>Acceso Naho (/naho)</span>
+          </button>
         </div>
       </div>
     </footer>

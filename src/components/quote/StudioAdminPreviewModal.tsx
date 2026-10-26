@@ -1,11 +1,10 @@
 import { useState } from 'react';
-import { QuoteTicket, PreferredContactMethod } from '../../types';
+import { QuoteTicket } from '../../types';
 import {
   X,
   Sparkles,
   Inbox,
   Mail,
-  Phone,
   MessageCircle,
   Clock,
   MapPin,
@@ -41,7 +40,7 @@ export function StudioAdminPreviewModal({
       type: currentTicket.formData.projectType.toUpperCase(),
       date: 'Hoy, Hace un momento',
       status: ticketStatus,
-      contact: currentTicket.formData.preferredContact,
+      contact: 'email',
     },
     {
       folio: '#NC-2026-081',
@@ -54,7 +53,7 @@ export function StudioAdminPreviewModal({
     {
       folio: '#NC-2026-079',
       client: 'Sofía Cantú',
-      type: 'ROPA',
+      type: 'MURAL',
       date: '9 Oct 2026',
       status: 'aprobado',
       contact: 'whatsapp',
@@ -89,32 +88,6 @@ export function StudioAdminPreviewModal({
           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">
             <CheckCircle2 className="w-3 h-3" />
             Aprobado para Iniciar
-          </span>
-        );
-    }
-  };
-
-  const getContactBadge = (method: PreferredContactMethod) => {
-    switch (method) {
-      case 'whatsapp':
-        return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 font-mono">
-            <MessageCircle className="w-3 h-3 text-emerald-600" />
-            Preferencia: WhatsApp
-          </span>
-        );
-      case 'email':
-        return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 font-mono">
-            <Mail className="w-3 h-3 text-blue-600" />
-            Preferencia: Correo Electrónico
-          </span>
-        );
-      case 'call':
-        return (
-          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800 font-mono">
-            <Phone className="w-3 h-3 text-purple-600" />
-            Preferencia: Llamada Directa
           </span>
         );
     }
@@ -263,7 +236,7 @@ export function StudioAdminPreviewModal({
             </div>
 
             {/* Client Contact Details Box */}
-            <div className="p-5 rounded-2xl bg-neutral-50/80 border border-black/[0.06] grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
+            <div className="p-5 rounded-2xl bg-neutral-50/80 border border-black/[0.06] grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
               <div>
                 <span className="text-[10px] uppercase font-bold text-neutral-400 block tracking-wider">
                   Correo Electrónico
@@ -281,20 +254,14 @@ export function StudioAdminPreviewModal({
                   Teléfono / WhatsApp
                 </span>
                 <a
-                  href={`tel:${currentTicket.formData.clientPhone}`}
-                  className="font-bold text-neutral-900 hover:text-naho-pink hover:underline font-mono mt-1 block"
+                  href={`https://wa.me/52${(currentTicket.formData.clientPhone || '').replace(/\D/g, '')}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-bold text-emerald-700 hover:text-emerald-800 hover:underline font-mono mt-1 flex items-center gap-1.5"
                 >
-                  {currentTicket.formData.clientPhone || 'No especificado'}
+                  <MessageCircle className="w-3.5 h-3.5 text-[#25D366]" />
+                  <span>{currentTicket.formData.clientPhone || 'No especificado'}</span>
                 </a>
-              </div>
-
-              <div>
-                <span className="text-[10px] uppercase font-bold text-neutral-400 block tracking-wider">
-                  Canal de Contacto
-                </span>
-                <div className="mt-1">
-                  {getContactBadge(currentTicket.formData.preferredContact)}
-                </div>
               </div>
             </div>
 
@@ -399,7 +366,7 @@ export function StudioAdminPreviewModal({
                 Acciones de Nahomy para este Proyecto:
               </span>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <a
                   href={`mailto:${currentTicket.formData.clientEmail}?subject=Presupuesto%20Nahocraft%20-${encodeURIComponent(
                     currentTicket.folio
@@ -407,27 +374,19 @@ export function StudioAdminPreviewModal({
                   className="py-3 px-3.5 rounded-full bg-neutral-950 hover:bg-neutral-800 text-white font-semibold text-xs flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
                 >
                   <Mail className="w-3.5 h-3.5 text-neutral-300" />
-                  <span>Enviar Presupuesto</span>
+                  <span>Enviar Correo</span>
                 </a>
 
                 <a
-                  href={`https://wa.me/52${currentTicket.formData.clientPhone.replace(/\D/g, '')}?text=Hola%20${encodeURIComponent(
-                    currentTicket.formData.clientName
-                  )}%2C%20soy%20Nahomy%20de%20Nahocraft.%20Recib%C3%AD%20tu%20solicitud%20${currentTicket.folio}...`}
+                  href={`https://wa.me/52${(currentTicket.formData.clientPhone || '').replace(/\D/g, '')}?text=${encodeURIComponent(
+                    `Hola ${currentTicket.formData.clientName}! Te saluda Nahomy de Nahocraft Centro de Arte en Tampico 🎨 Te escribo sobre tu solicitud de cotización (${currentTicket.folio}) para tu proyecto de ${currentTicket.formData.muralCategory || 'mural'}. Me encantó tu idea y te escribo para platicar los detalles...`
+                  )}`}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="py-3 px-3.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
+                  className="py-3 px-3.5 rounded-full bg-[#25D366] hover:bg-[#20ba5a] text-white font-semibold text-xs flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
                 >
-                  <MessageCircle className="w-3.5 h-3.5 text-white" />
-                  <span>Chat en WhatsApp</span>
-                </a>
-
-                <a
-                  href={`tel:${currentTicket.formData.clientPhone}`}
-                  className="py-3 px-3.5 rounded-full bg-neutral-100 hover:bg-neutral-200 text-neutral-800 font-semibold text-xs flex items-center justify-center gap-1.5 transition-all cursor-pointer active:scale-95"
-                >
-                  <Phone className="w-3.5 h-3.5 text-neutral-600" />
-                  <span>Llamar al Cliente</span>
+                  <MessageCircle className="w-3.5 h-3.5 fill-white" />
+                  <span>Mandar WhatsApp</span>
                 </a>
               </div>
             </div>
