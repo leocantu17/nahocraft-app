@@ -11,9 +11,15 @@ export const WEEKLY_SCHEDULE: DailySchedule[] = [
 ];
 
 /**
- * Calculates whether the studio in Tampico (America/Monterrey timezone) is currently open or closed.
+ * Calculates whether the studio in Tampico (America/Monterrey timezone) is currently open or closed,
+ * reading from the dynamic schedule passed from SiteDataContext (or WEEKLY_SCHEDULE fallback).
  */
-export function isStudioOpenNow(date: Date = new Date()): StudioStatus {
+export function isStudioOpenNow(
+  date: Date = new Date(),
+  scheduleList: DailySchedule[] = WEEKLY_SCHEDULE
+): StudioStatus {
+  const activeSchedule = scheduleList.length > 0 ? scheduleList : WEEKLY_SCHEDULE;
+
   // Get current time in Tampico / America/Monterrey timezone
   const tampicoDateString = date.toLocaleString('en-US', { timeZone: 'America/Monterrey' });
   const tampicoDate = new Date(tampicoDateString);
@@ -23,7 +29,8 @@ export function isStudioOpenNow(date: Date = new Date()): StudioStatus {
   const currentMinutes = tampicoDate.getMinutes();
   const currentTotalMinutes = currentHours * 60 + currentMinutes;
 
-  const todaySchedule = WEEKLY_SCHEDULE.find((s) => s.dayIndex === currentDayIndex) || WEEKLY_SCHEDULE[0];
+  const todaySchedule =
+    activeSchedule.find((s) => s.dayIndex === currentDayIndex) || activeSchedule[0];
 
   let isOpen = false;
   let message = '';
@@ -42,7 +49,22 @@ export function isStudioOpenNow(date: Date = new Date()): StudioStatus {
     hour12: true,
   });
 
-  if (todaySchedule.isOpen && todaySchedule.openHour !== undefined && todaySchedule.closeHour !== undefined) {
+  const findNextOpenSchedule = (fromDayIdx: number): DailySchedule | undefined => {
+    for (let offset = 1; offset <= 7; offset++) {
+      const idx = ((fromDayIdx + offset) % 7) as DayOfWeek;
+      const candidate = activeSchedule.find((s) => s.dayIndex === idx);
+      if (candidate && candidate.isOpen && candidate.openHour !== undefined) {
+        return candidate;
+      }
+    }
+    return undefined;
+  };
+
+  if (
+    todaySchedule.isOpen &&
+    todaySchedule.openHour !== undefined &&
+    todaySchedule.closeHour !== undefined
+  ) {
     const openMinutes = todaySchedule.openHour * 60;
     const closeMinutes = todaySchedule.closeHour * 60;
 
@@ -56,25 +78,27 @@ export function isStudioOpenNow(date: Date = new Date()): StudioStatus {
       nextScheduleInfo = `Apertura estimada: ${formatTime12h(todaySchedule.openHour)}`;
     } else {
       isOpen = false;
-      // Already closed for today, check next opening day
-      const nextDayIndex = ((currentDayIndex + 1) % 7) as DayOfWeek;
-      const nextSchedule = WEEKLY_SCHEDULE.find((s) => s.dayIndex === nextDayIndex);
-      if (nextSchedule && nextSchedule.isOpen) {
-        message = `Cerrado por hoy • Abrimos mañana ${nextSchedule.dayName} a las ${nextSchedule.openHour}:00 hrs`;
-        nextScheduleInfo = `Mañana ${nextSchedule.dayName} de ${nextSchedule.displayTime}`;
+      const nextOpen = findNextOpenSchedule(currentDayIndex);
+      if (nextOpen) {
+        const isTomorrow = nextOpen.dayIndex === ((currentDayIndex + 1) % 7);
+        const dayPrefix = isTomorrow ? `mañana ${nextOpen.dayName}` : `el ${nextOpen.dayName}`;
+        message = `Cerrado por hoy • Abrimos ${dayPrefix} a las ${nextOpen.openHour}:00 hrs`;
+        nextScheduleInfo = `${nextOpen.dayName} de ${nextOpen.displayTime}`;
       } else {
-        // e.g. Saturday closing -> Sunday is closed -> Monday opens
-        const mondaySchedule = WEEKLY_SCHEDULE.find((s) => s.dayIndex === 1)!;
-        message = `Cerrado • Abrimos el Lunes a las ${mondaySchedule.openHour}:00 hrs`;
-        nextScheduleInfo = `Lunes de ${mondaySchedule.displayTime}`;
+        message = 'Cerrado temporalmente';
+        nextScheduleInfo = 'Consulta horarios por WhatsApp';
       }
     }
   } else {
-    // Sunday (Cerrado)
-    const mondaySchedule = WEEKLY_SCHEDULE.find((s) => s.dayIndex === 1)!;
     isOpen = false;
-    message = `Cerrado hoy Domingo • Abrimos el Lunes a las ${mondaySchedule.openHour}:00 hrs`;
-    nextScheduleInfo = `Próxima apertura: Lunes a las 11:00 AM`;
+    const nextOpen = findNextOpenSchedule(currentDayIndex);
+    if (nextOpen) {
+      message = `Cerrado hoy ${todaySchedule.dayName} • Abrimos el ${nextOpen.dayName} a las ${nextOpen.openHour}:00 hrs`;
+      nextScheduleInfo = `Próxima apertura: ${nextOpen.dayName} (${formatTime12h(nextOpen.openHour ?? 11)})`;
+    } else {
+      message = `Cerrado hoy ${todaySchedule.dayName}`;
+      nextScheduleInfo = 'Consulta disponibilidad';
+    }
   }
 
   return {

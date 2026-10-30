@@ -25,6 +25,14 @@ export const INITIAL_SITE_CONFIG: SiteGeneralConfig = {
   studioPhone: '+52 833 365 5622',
   studioWhatsapp: '528333655622',
   adminEmail: ADMIN_EMAIL_DEFAULT,
+  instagramHandle: '@nahocraft',
+  instagramUrl: 'https://www.instagram.com/nahocraft?igshid=NzZlODBkYWE4Ng%3D%3D&utm_source=qr',
+  tiktokHandle: '@nahocraft1',
+  tiktokUrl: 'https://www.tiktok.com/@nahocraft1',
+  facebookHandle: 'Nahocraft Tampico',
+  facebookUrl: 'https://www.facebook.com/nahocraft?mibextid=LQQJ4d',
+  youtubeHandle: '@nahocraft',
+  youtubeUrl: 'https://www.youtube.com/@nahocraft',
 };
 
 export const INITIAL_MURAL_CATEGORIES: MuralCategory[] = [
@@ -66,6 +74,18 @@ export const PORTFOLIO_ITEMS: PortfolioItem[] = [
       location: 'Tampico, Tamps.',
       curatedTag: 'Ideal para Negocios',
     },
+    galleryImages: [
+      {
+        id: 'dulceria-1',
+        url: localAssets.murales.dulceria,
+        label: 'Resultado Final',
+      },
+      {
+        id: 'dulceria-2',
+        url: localAssets.murales.minerva,
+        label: 'Detalle & Contraste',
+      },
+    ],
   },
   {
     id: 'mural-hojas',
@@ -360,6 +380,8 @@ export const INITIAL_QUOTE_TICKETS: QuoteTicket[] = [
       referenceImageName: 'referencia-hojas-sala.png',
     },
     referenceArtTitle: 'Mural Botánico Orgánico & Follaje',
+    quotedAmount: 7800,
+    adminNotes: 'Cliente prefiere visita técnica el jueves por la tarde. Muro ya fondeado en blanco mate.',
   },
 ];
 

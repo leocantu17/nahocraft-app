@@ -124,6 +124,12 @@ export function InteractiveGallery({ onSelectForQuote }: InteractiveGalleryProps
                     {item.details.curatedTag}
                   </span>
                 )}
+
+                {item.galleryImages && item.galleryImages.length > 1 && (
+                  <span className="absolute bottom-3.5 right-3.5 bg-black/70 backdrop-blur-md text-white text-[10px] font-mono font-bold px-2.5 py-1 rounded-full shadow-xs">
+                    +{item.galleryImages.length} fotos
+                  </span>
+                )}
               </div>
 
               {/* Card Body */}

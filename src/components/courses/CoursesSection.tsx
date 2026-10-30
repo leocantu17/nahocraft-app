@@ -1,6 +1,6 @@
-import { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useSiteData } from '../../context/SiteDataContext';
-import { CourseItem } from '../../types';
+import { CourseItem, CourseEnrollment } from '../../types';
 import { CourseCheckoutModal } from './CourseCheckoutModal';
 import {
   Calendar,
@@ -12,7 +12,27 @@ import {
   Ticket,
   Lock,
   Mail,
+  KeyRound,
+  ExternalLink,
+  AlertCircle,
+  X,
+  GraduationCap,
+  MapPin,
 } from 'lucide-react';
+
+const DEVICE_SESSION_STORAGE_KEY = 'nahocraft_student_device_session_id';
+
+function getOrCreateDeviceSessionId(): string {
+  try {
+    const existing = localStorage.getItem(DEVICE_SESSION_STORAGE_KEY);
+    if (existing) return existing;
+    const generated = `dev_${Date.now().toString(36)}_${Math.random().toString(36).substring(2, 8)}`;
+    localStorage.setItem(DEVICE_SESSION_STORAGE_KEY, generated);
+    return generated;
+  } catch {
+    return 'dev_default_session';
+  }
+}
 
 function getDeadlineStatus(deadlineStr: string, now: Date) {
   const deadline = new Date(deadlineStr);
@@ -41,10 +61,17 @@ function getDeadlineStatus(deadlineStr: string, now: Date) {
 }
 
 export function CoursesSection() {
-  const { courses } = useSiteData();
+  const { courses, courseEnrollments, bindEnrollmentSession } = useSiteData();
   const [selectedMonth, setSelectedMonth] = useState<string>('all');
   const [selectedCourseForCheckout, setSelectedCourseForCheckout] = useState<CourseItem | null>(null);
   const [now, setNow] = useState<Date>(() => new Date());
+
+  // State for Access Code Verification Modal (#6)
+  const [showAccessModal, setShowAccessModal] = useState(false);
+  const [accessEmail, setAccessEmail] = useState('');
+  const [accessCodeInput, setAccessCodeInput] = useState('');
+  const [accessError, setAccessError] = useState<string | null>(null);
+  const [verifiedEnrollment, setVerifiedEnrollment] = useState<CourseEnrollment | null>(null);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -71,6 +98,46 @@ export function CoursesSection() {
     return courses.find((c) => c.id === selectedCourseForCheckout.id) || selectedCourseForCheckout;
   }, [courses, selectedCourseForCheckout]);
 
+  const handleVerifyAccessCode = (e: React.FormEvent) => {
+    e.preventDefault();
+    setAccessError(null);
+
+    const cleanEmail = accessEmail.trim().toLowerCase();
+    const cleanCode = accessCodeInput.trim().toUpperCase();
+
+    if (!cleanEmail || !cleanCode) {
+      setAccessError('Por favor ingresa tanto tu correo electrónico como tu código de acceso.');
+      return;
+    }
+
+    const matched = courseEnrollments.find(
+      (enr) =>
+        enr.buyerEmail.trim().toLowerCase() === cleanEmail &&
+        enr.accessCode.trim().toUpperCase() === cleanCode
+    );
+
+    if (!matched) {
+      setAccessError(
+        'No encontramos un boleto con esa combinación de correo y código. Verifica tus datos.'
+      );
+      return;
+    }
+
+    const currentDeviceId = getOrCreateDeviceSessionId();
+    if (matched.lockedSessionId && matched.lockedSessionId !== currentDeviceId) {
+      setAccessError(
+        'Este código personal ya fue activado en otro dispositivo. Recuerda que cada boleto es individual e intransferible.'
+      );
+      return;
+    }
+
+    if (!matched.lockedSessionId) {
+      bindEnrollmentSession(matched.id, currentDeviceId);
+    }
+
+    setVerifiedEnrollment(matched);
+  };
+
   return (
     <section id="cursos" className="py-24 md:py-32 bg-[#FBFBFA] relative overflow-hidden">
       {/* Ambient lighting */}
@@ -81,7 +148,7 @@ export function CoursesSection() {
         <div className="text-center max-w-3xl mx-auto mb-12">
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-white border border-black/[0.08] text-neutral-900 shadow-2xs mb-4">
             <span className="w-2 h-2 rounded-full bg-naho-pink animate-ping" />
-            Calendario Mensual de Cursos & Talleres Online
+            Calendario Mensual de Cursos & Talleres
           </div>
           <h2 className="text-3xl sm:text-5xl font-black text-neutral-900 tracking-[-0.035em]">
             Aprende a Pintar en Vivo con{' '}
@@ -90,10 +157,10 @@ export function CoursesSection() {
             </span>
           </h2>
           <p className="mt-4 text-base sm:text-lg text-neutral-600 leading-relaxed">
-            Cada mes abrimos nuevos cursos interactivos con <strong>cupo limitado</strong> y fecha límite de registro. Al inscribirte recibirás en tu correo electrónico toda la información y el acceso personal para conectarte a la clase.
+            Cada mes abrimos nuevos cursos interactivos con <strong>cupo limitado</strong> y fecha límite de registro. Al inscribirte recibirás en tu correo electrónico toda la información y tu código personal para conectarte a la clase.
           </p>
 
-          {/* How it works pills */}
+          {/* How it works pills + Access Room Button */}
           <div className="mt-6 flex flex-wrap items-center justify-center gap-3 text-xs font-semibold text-neutral-700">
             <span className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-white border border-black/[0.06] shadow-2xs">
               <Ticket className="w-3.5 h-3.5 text-naho-pink" />
@@ -101,12 +168,20 @@ export function CoursesSection() {
             </span>
             <span className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-white border border-black/[0.06] shadow-2xs">
               <Mail className="w-3.5 h-3.5 text-naho-orange" />
-              2. Recibe toda la información y el link en tu correo
+              2. Recibe tu código NAHO y el link en tu correo
             </span>
-            <span className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full bg-white border border-black/[0.06] shadow-2xs">
-              <Video className="w-3.5 h-3.5 text-naho-blue" />
-              3. Conéctate a la sesión en vivo en la fecha indicada
-            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setVerifiedEnrollment(null);
+                setAccessError(null);
+                setShowAccessModal(true);
+              }}
+              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-neutral-950 hover:bg-naho-pink text-white font-bold shadow-xs transition-colors cursor-pointer"
+            >
+              <KeyRound className="w-3.5 h-3.5 text-naho-yellow" />
+              <span>¿Ya tienes boleto? Entrar a mi Clase</span>
+            </button>
           </div>
         </div>
 
@@ -150,6 +225,12 @@ export function CoursesSection() {
               100,
               Math.round((course.enrolledCount / Math.max(1, course.maxSpots)) * 100)
             );
+            const modalityBadge =
+              course.modality === 'presencial'
+                ? 'Presencial en Taller'
+                : course.modality === 'hibrido'
+                ? 'Híbrido (Online / Taller)'
+                : course.platformName;
 
             return (
               <article
@@ -206,8 +287,12 @@ export function CoursesSection() {
                     <div>
                       <div className="flex items-center justify-between gap-2 text-[11px] font-bold text-naho-blue uppercase tracking-wider mb-1">
                         <span className="flex items-center gap-1.5">
-                          <Video className="w-3.5 h-3.5" />
-                          <span>{course.platformName}</span>
+                          {course.modality === 'presencial' ? (
+                            <MapPin className="w-3.5 h-3.5 text-naho-pink" />
+                          ) : (
+                            <Video className="w-3.5 h-3.5" />
+                          )}
+                          <span>{modalityBadge}</span>
                         </span>
                         <span className="inline-flex items-center gap-1 text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full text-[10px] font-extrabold">
                           <Lock className="w-2.5 h-2.5" />
@@ -217,6 +302,12 @@ export function CoursesSection() {
                       <h3 className="font-extrabold text-xl text-neutral-900 tracking-tight leading-snug">
                         {course.title}
                       </h3>
+                      {course.level && (
+                        <p className="mt-1.5 text-[11px] font-semibold text-neutral-500 flex items-center gap-1.5">
+                          <GraduationCap className="w-3.5 h-3.5 text-naho-pink shrink-0" />
+                          <span>Nivel: {course.level}</span>
+                        </p>
+                      )}
                       <p className="mt-2 text-xs sm:text-sm text-neutral-600 leading-relaxed">
                         {course.description}
                       </p>
@@ -343,6 +434,126 @@ export function CoursesSection() {
           course={liveSelectedCourse}
           onClose={() => setSelectedCourseForCheckout(null)}
         />
+      )}
+
+      {/* Student Access Code Verification Modal (#6) */}
+      {showAccessModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-md animate-in fade-in duration-200"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowAccessModal(false);
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Acceso a sala virtual con código personal"
+            className="relative w-full max-w-md rounded-[2.25rem] bg-white text-neutral-900 p-7 sm:p-8 shadow-2xl border border-black/10 space-y-6"
+          >
+            <button
+              type="button"
+              onClick={() => setShowAccessModal(false)}
+              className="absolute top-5 right-5 w-9 h-9 rounded-full bg-neutral-100 hover:bg-neutral-200 text-neutral-700 flex items-center justify-center cursor-pointer"
+              aria-label="Cerrar verificador"
+            >
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="space-y-2">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-naho-pink/10 text-naho-pink text-[11px] font-bold uppercase tracking-wider">
+                <KeyRound className="w-3.5 h-3.5" />
+                Acceso de Alumno(a)
+              </span>
+              <h3 className="text-2xl font-black text-neutral-950 tracking-tight">
+                Entrar a mi Clase en Vivo
+              </h3>
+              <p className="text-xs text-neutral-500 leading-relaxed">
+                Ingresa el correo con el que te inscribiste y tu código personal (ej. <code className="font-mono font-bold text-neutral-800">NAHO-OCT29-841</code>) para desbloquear tu acceso.
+              </p>
+            </div>
+
+            {!verifiedEnrollment ? (
+              <form onSubmit={handleVerifyAccessCode} className="space-y-4">
+                {accessError && (
+                  <div
+                    role="alert"
+                    className="p-3.5 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold flex items-start gap-2"
+                  >
+                    <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                    <span>{accessError}</span>
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 mb-1.5">
+                    Correo Registrado *
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    placeholder="tucorreo@ejemplo.com"
+                    value={accessEmail}
+                    onChange={(e) => {
+                      setAccessEmail(e.target.value);
+                      if (accessError) setAccessError(null);
+                    }}
+                    className="w-full px-4 py-3 rounded-2xl border border-neutral-200 bg-neutral-50 text-sm font-mono focus:bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 mb-1.5">
+                    Código Único de Boleto *
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="NAHO-XXXX-000"
+                    value={accessCodeInput}
+                    onChange={(e) => {
+                      setAccessCodeInput(e.target.value.toUpperCase());
+                      if (accessError) setAccessError(null);
+                    }}
+                    className="w-full px-4 py-3 rounded-2xl border border-neutral-200 bg-neutral-50 text-sm font-mono uppercase tracking-wider focus:bg-white focus:outline-none focus:ring-2 focus:ring-neutral-900"
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full py-3.5 px-6 rounded-full bg-neutral-950 hover:bg-naho-pink text-white font-bold text-xs uppercase tracking-wider transition-colors cursor-pointer shadow-md"
+                >
+                  Validar Boleto y Desbloquear Sala
+                </button>
+              </form>
+            ) : (
+              <div className="space-y-5">
+                <div className="p-5 rounded-2xl bg-emerald-50 border border-emerald-200 space-y-2">
+                  <div className="flex items-center gap-2 text-emerald-800 font-bold text-xs">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span>¡Boleto verificado! Hola, {verifiedEnrollment.buyerName}</span>
+                  </div>
+                  <p className="text-xs font-bold text-neutral-900">
+                    {verifiedEnrollment.courseTitle}
+                  </p>
+                  <p className="text-[11px] font-mono text-neutral-600">
+                    {verifiedEnrollment.courseDateDisplay} • {verifiedEnrollment.courseTimeDisplay}
+                  </p>
+                </div>
+
+                <a
+                  href={verifiedEnrollment.meetingLink}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full py-4 px-6 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 transition-colors shadow-lg"
+                >
+                  <Video className="w-4 h-4" />
+                  <span>Abrir Sala de Clase ({verifiedEnrollment.platformName})</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </section>
   );

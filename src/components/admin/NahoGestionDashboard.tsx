@@ -2,10 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { useSiteData } from '../../context/SiteDataContext';
 import { isNahoAuthenticated, setNahoAuthenticated } from './NahoLoginPage';
 import { localAssets } from '../../assets';
+import { compressImageFile } from '../../utils/imageCompressor';
+import { sendStudentTicketEmail } from '../../emails';
 import {
   CourseItem,
+  CourseEnrollment,
   PortfolioItem,
   MuralCategory,
+  MuralGalleryImage,
   QuoteTicket,
   StudioGalleryPhoto,
 } from '../../types';
@@ -40,8 +44,14 @@ import {
   Copy,
   Check,
   Eye,
+  EyeOff,
   ExternalLink,
   Wand2,
+  Download,
+  Send,
+  AlertTriangle,
+  Images,
+  GraduationCap,
 } from 'lucide-react';
 
 const SPANISH_MONTHS = [
@@ -99,6 +109,7 @@ export function NahoGestionDashboard() {
     updateSiteConfig,
     muralCategories,
     addMuralCategory,
+    updateMuralCategory,
     deleteMuralCategory,
     muralItems,
     addMuralItem,
@@ -109,8 +120,10 @@ export function NahoGestionDashboard() {
     updateCourse,
     deleteCourse,
     courseEnrollments,
+    deleteCourseEnrollment,
     quoteTickets,
     updateQuoteTicketStatus,
+    updateQuoteTicketDetails,
     deleteQuoteTicket,
     aboutMe,
     updateAboutMe,
@@ -119,11 +132,21 @@ export function NahoGestionDashboard() {
     studioPhotos,
     addStudioPhoto,
     deleteStudioPhoto,
+    weeklySchedule,
+    updateWeeklySchedule,
     resetAllDataToDefaults,
   } = useSiteData();
 
   const [activeTab, setActiveTab] = useState<AdminTab>('murales');
   const [saveToast, setSaveToast] = useState<string | null>(null);
+
+  // Reusable Confirmation Dialog State (#11)
+  const [confirmDialog, setConfirmDialog] = useState<{
+    title: string;
+    message: string;
+    confirmLabel: string;
+    onConfirm: () => void;
+  } | null>(null);
 
   // State for ALUMNOS tab (Filtering by specific course & search)
   const [selectedStudentCourseFilter, setSelectedStudentCourseFilter] = useState<string>('all');
@@ -147,6 +170,7 @@ export function NahoGestionDashboard() {
 
   // Modals state
   const [showCategoryModal, setShowCategoryModal] = useState(false);
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
   const [showMuralModal, setShowMuralModal] = useState(false);
   const [editingMuralId, setEditingMuralId] = useState<string | null>(null);
   const [showCourseModal, setShowCourseModal] = useState(false);
@@ -174,12 +198,23 @@ export function NahoGestionDashboard() {
     setTimeout(() => setSaveToast(null), 3000);
   };
 
-  // --- STATE FOR NEW CATEGORY MODAL ---
+  // --- STATE FOR NEW / EDIT CATEGORY MODAL ---
   const [newCatLabel, setNewCatLabel] = useState('');
   const [newCatDesc, setNewCatDesc] = useState('');
 
   // --- STATE FOR MURAL MODAL ---
-  const [muralForm, setMuralForm] = useState({
+  const [muralForm, setMuralForm] = useState<{
+    title: string;
+    category: string;
+    description: string;
+    dimensions: string;
+    technique: string;
+    location: string;
+    curatedTag: string;
+    tagsText: string;
+    image: string;
+    galleryImages: MuralGalleryImage[];
+  }>({
     title: '',
     category: muralCategories[0]?.id || 'comercial',
     description: '',
@@ -187,11 +222,37 @@ export function NahoGestionDashboard() {
     technique: 'Acrílico profesional sobre muro',
     location: 'Tampico, Tamps.',
     curatedTag: 'Mural Personalizado',
+    tagsText: 'Comercial, Tampico, Pintado a Mano',
     image: localAssets.murales.dulceria,
+    galleryImages: [],
   });
+  const [newGallerySlideLabel, setNewGallerySlideLabel] = useState('Antes del Mural');
 
   // --- STATE FOR COURSE MODAL ---
-  const [courseForm, setCourseForm] = useState({
+  const [courseForm, setCourseForm] = useState<{
+    title: string;
+    subtitle: string;
+    description: string;
+    eventDate: string;
+    eventDateDisplay: string;
+    startTime: string;
+    endTime: string;
+    eventTimeDisplay: string;
+    registrationDeadline: string;
+    maxSpots: number;
+    price: number;
+    modality: CourseItem['modality'];
+    level: string;
+    platformName: string;
+    meetingLink: string;
+    selectedMonth: string;
+    selectedYear: string;
+    monthLabel: string;
+    image: string;
+    includesText: string;
+    featured: boolean;
+    active: boolean;
+  }>({
     title: '',
     subtitle: 'Curso en Vivo Paso a Paso',
     description: '',
@@ -203,6 +264,8 @@ export function NahoGestionDashboard() {
     registrationDeadline: '2026-10-29T16:00',
     maxSpots: 15,
     price: 480,
+    modality: 'online',
+    level: 'Todos los niveles (Sin experiencia previa necesaria)',
     platformName: 'Google Meet (En Vivo)',
     meetingLink: 'https://meet.google.com/nah-arte-curso',
     selectedMonth: 'Octubre',
@@ -212,6 +275,7 @@ export function NahoGestionDashboard() {
     includesText:
       'Acceso en vivo por Google Meet\nLista de materiales en PDF\nRetroalimentación en directo con Nahomy',
     featured: false,
+    active: true,
   });
   const [copiedMeetLink, setCopiedMeetLink] = useState(false);
 
@@ -223,58 +287,88 @@ export function NahoGestionDashboard() {
     image: localAssets.murales.hojas,
   });
 
-  const handleImageFileUpload = (
+  const handleImageFileUpload = async (
     e: React.ChangeEvent<HTMLInputElement>,
     onLoaded: (dataUrl: string) => void
   ) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      if (typeof ev.target?.result === 'string') {
-        onLoaded(ev.target.result);
-      }
-    };
-    reader.readAsDataURL(file);
+    try {
+      const compressedUrl = await compressImageFile(file, 1200, 0.8);
+      onLoaded(compressedUrl);
+    } catch {
+      showToast('No se pudo procesar el archivo de imagen.');
+    }
+    e.target.value = '';
   };
 
   // --- HANDLERS FOR MURAL CATEGORIES & ITEMS ---
+  const openNewCategoryModal = () => {
+    setEditingCategoryId(null);
+    setNewCatLabel('');
+    setNewCatDesc('');
+    setShowCategoryModal(true);
+  };
+
+  const openEditCategoryModal = (cat: MuralCategory) => {
+    setEditingCategoryId(cat.id);
+    setNewCatLabel(cat.label);
+    setNewCatDesc(cat.description || '');
+    setShowCategoryModal(true);
+  };
+
   const handleAddCategory = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newCatLabel.trim()) return;
-    const slug = newCatLabel
-      .trim()
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^a-z0-9]+/g, '-');
-    const cat: MuralCategory = {
-      id: slug || `cat-${Date.now()}`,
-      label: newCatLabel.trim(),
-      description: newCatDesc.trim() || 'Categoría de mural personalizado',
-    };
-    addMuralCategory(cat);
-    setSelectedMuralCatId(cat.id);
+
+    if (editingCategoryId) {
+      updateMuralCategory({
+        id: editingCategoryId,
+        label: newCatLabel.trim(),
+        description: newCatDesc.trim() || 'Categoría de mural personalizado',
+      });
+      showToast(`Categoría "${newCatLabel.trim()}" actualizada.`);
+    } else {
+      const slug = newCatLabel
+        .trim()
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-z0-9]+/g, '-');
+      const cat: MuralCategory = {
+        id: slug || `cat-${Date.now()}`,
+        label: newCatLabel.trim(),
+        description: newCatDesc.trim() || 'Categoría de mural personalizado',
+      };
+      addMuralCategory(cat);
+      setSelectedMuralCatId(cat.id);
+      showToast(`Categoría "${cat.label}" creada.`);
+    }
+
     setNewCatLabel('');
     setNewCatDesc('');
+    setEditingCategoryId(null);
     setShowCategoryModal(false);
-    showToast(`Categoría "${cat.label}" creada.`);
   };
 
   const openNewMuralModal = () => {
+    const defaultCatId =
+      selectedMuralCatId !== 'all'
+        ? selectedMuralCatId
+        : muralCategories[0]?.id || 'comercial';
+    const matchedCat = muralCategories.find((c) => c.id === defaultCatId);
     setEditingMuralId(null);
     setMuralForm({
       title: '',
-      category:
-        selectedMuralCatId !== 'all'
-          ? selectedMuralCatId
-          : muralCategories[0]?.id || 'comercial',
+      category: defaultCatId,
       description: '',
       dimensions: '3.5m x 2.5m',
       technique: 'Acrílico profesional sobre muro',
       location: 'Tampico, Tamps.',
       curatedTag: 'Mural Personalizado',
+      tagsText: `${matchedCat?.label || 'Mural'}, Tampico, Pintado a Mano`,
       image: localAssets.murales.dulceria,
+      galleryImages: [],
     });
     setShowMuralModal(true);
   };
@@ -289,7 +383,9 @@ export function NahoGestionDashboard() {
       technique: item.details?.technique || 'Acrílico profesional sobre muro',
       location: item.details?.location || 'Tampico, Tamps.',
       curatedTag: item.details?.curatedTag || 'Mural Personalizado',
+      tagsText: item.tags?.length ? item.tags.join(', ') : `${item.categoryLabel}, Tampico`,
       image: item.image,
+      galleryImages: item.galleryImages || [],
     });
     setShowMuralModal(true);
   };
@@ -298,6 +394,14 @@ export function NahoGestionDashboard() {
     e.preventDefault();
     if (!muralForm.title.trim()) return;
     const matchedCat = muralCategories.find((c) => c.id === muralForm.category);
+    const parsedTags = muralForm.tagsText
+      .split(',')
+      .map((t) => t.trim())
+      .filter(Boolean);
+    const finalTags =
+      parsedTags.length > 0
+        ? parsedTags
+        : [matchedCat?.label || 'Mural', muralForm.location, 'Pintado a Mano'];
 
     if (editingMuralId) {
       const existing = muralItems.find((m) => m.id === editingMuralId);
@@ -310,13 +414,14 @@ export function NahoGestionDashboard() {
           image: muralForm.image,
           description:
             muralForm.description.trim() || 'Mural artístico pintado a mano por Nahomy.',
-          tags: [matchedCat?.label || 'Mural', muralForm.location, 'Pintado a Mano'],
+          tags: finalTags,
           details: {
             dimensions: muralForm.dimensions,
             technique: muralForm.technique,
             location: muralForm.location,
             curatedTag: muralForm.curatedTag,
           },
+          galleryImages: muralForm.galleryImages,
         });
         showToast('Mural actualizado.');
       }
@@ -329,13 +434,14 @@ export function NahoGestionDashboard() {
         image: muralForm.image,
         description:
           muralForm.description.trim() || 'Mural artístico pintado a mano por Nahomy.',
-        tags: [matchedCat?.label || 'Mural', muralForm.location, 'Pintado a Mano'],
+        tags: finalTags,
         details: {
           dimensions: muralForm.dimensions,
           technique: muralForm.technique,
           location: muralForm.location,
           curatedTag: muralForm.curatedTag,
         },
+        galleryImages: muralForm.galleryImages,
       };
       addMuralItem(item);
       setSelectedMuralCatId(item.category);
@@ -364,6 +470,8 @@ export function NahoGestionDashboard() {
       registrationDeadline: `${defaultDate}T16:00`,
       maxSpots: 15,
       price: 480,
+      modality: 'online',
+      level: 'Todos los niveles (Sin experiencia previa necesaria)',
       platformName: 'Google Meet (En Vivo)',
       meetingLink: initialMeet,
       selectedMonth: month,
@@ -373,6 +481,7 @@ export function NahoGestionDashboard() {
       includesText:
         'Acceso en vivo a la sesión interactiva por Google Meet\nLista de materiales y guía de mezcla en PDF\nRevisión en directo de tu ejercicio con Nahomy\nGrabación disponible por 15 días y constancia digital',
       featured: false,
+      active: true,
     });
     setCopiedMeetLink(false);
     setShowCourseModal(true);
@@ -400,6 +509,8 @@ export function NahoGestionDashboard() {
       registrationDeadline: c.registrationDeadline.slice(0, 16),
       maxSpots: c.maxSpots,
       price: c.price,
+      modality: c.modality || 'online',
+      level: c.level || 'Todos los niveles',
       platformName: c.platformName,
       meetingLink: c.meetingLink,
       selectedMonth,
@@ -408,6 +519,7 @@ export function NahoGestionDashboard() {
       image: c.image,
       includesText: c.includes.join('\n'),
       featured: Boolean(c.featured),
+      active: c.active !== false,
     });
     setCopiedMeetLink(false);
     setShowCourseModal(true);
@@ -436,12 +548,15 @@ export function NahoGestionDashboard() {
           registrationDeadline: courseForm.registrationDeadline,
           maxSpots: Number(courseForm.maxSpots) || 15,
           price: Number(courseForm.price) || 450,
+          modality: courseForm.modality,
+          level: courseForm.level.trim() || 'Todos los niveles',
           platformName: courseForm.platformName.trim(),
           meetingLink: courseForm.meetingLink.trim(),
           monthLabel: courseForm.monthLabel.trim(),
           image: courseForm.image,
           includes: includesList,
           featured: courseForm.featured,
+          active: courseForm.active,
         });
         showToast('Curso actualizado correctamente.');
       }
@@ -458,15 +573,15 @@ export function NahoGestionDashboard() {
         maxSpots: Number(courseForm.maxSpots) || 15,
         enrolledCount: 0,
         price: Number(courseForm.price) || 450,
-        modality: 'online',
+        modality: courseForm.modality,
         platformName: courseForm.platformName.trim(),
         meetingLink: courseForm.meetingLink.trim(),
         monthLabel: courseForm.monthLabel.trim(),
-        level: 'Todos los niveles',
+        level: courseForm.level.trim() || 'Todos los niveles',
         image: courseForm.image,
         includes: includesList,
         featured: courseForm.featured,
-        active: true,
+        active: courseForm.active,
       };
       addCourse(newCourseItem);
       showToast('Curso publicado con su link de acceso.');
@@ -474,6 +589,84 @@ export function NahoGestionDashboard() {
 
     setShowCourseModal(false);
     setEditingCourseId(null);
+  };
+
+  // --- HANDLERS FOR STUDENT ENROLLMENTS (#5) ---
+  const handleResendStudentTicket = (enr: CourseEnrollment) => {
+    const matchedCourse = courses.find((c) => c.id === enr.courseId);
+    sendStudentTicketEmail({
+      buyerName: enr.buyerName,
+      buyerEmail: enr.buyerEmail,
+      buyerPhone: enr.buyerPhone,
+      accessCode: enr.accessCode,
+      folio: enr.folio,
+      courseTitle: enr.courseTitle,
+      courseSubtitle: matchedCourse?.subtitle,
+      eventDateDisplay: enr.courseDateDisplay,
+      eventTimeDisplay: enr.courseTimeDisplay,
+      meetingLink: enr.meetingLink,
+      totalPaid: enr.totalPaid,
+      paymentMethod: enr.paymentMethod,
+      studioAddress: siteConfig.studioAddress,
+      studioPhone: siteConfig.studioPhone,
+      adminEmail: siteConfig.adminEmail,
+    })
+      .then(() => {
+        showToast(`Boleto reenviado a ${enr.buyerEmail}.`);
+      })
+      .catch(() => {
+        showToast(`No se pudo reenviar el correo a ${enr.buyerEmail}.`);
+      });
+  };
+
+  const handleExportStudentsCsv = (list: CourseEnrollment[]) => {
+    if (list.length === 0) return;
+    const headers = [
+      'Folio',
+      'Codigo_Acceso',
+      'Alumno',
+      'Correo',
+      'Telefono',
+      'Curso',
+      'Fecha_Curso',
+      'Horario',
+      'Monto_Pagado_MXN',
+      'Metodo_Pago',
+      'Fecha_Compra',
+      'Enlace_Meet',
+    ];
+    const escapeCsv = (val: string | number) => {
+      const s = String(val ?? '').replace(/"/g, '""');
+      return `"${s}"`;
+    };
+    const rows = list.map((e) =>
+      [
+        e.folio,
+        e.accessCode,
+        e.buyerName,
+        e.buyerEmail,
+        e.buyerPhone,
+        e.courseTitle,
+        e.courseDateDisplay,
+        e.courseTimeDisplay,
+        e.totalPaid,
+        e.paymentMethod,
+        e.purchasedAt,
+        e.meetingLink,
+      ]
+        .map(escapeCsv)
+        .join(',')
+    );
+    const csvContent = '\uFEFF' + [headers.join(','), ...rows].join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `Alumnos_Nahocraft_${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(link.href);
+    showToast(`Archivo CSV exportado (${list.length} alumnos).`);
   };
 
   const handleAddStudioPhoto = (e: React.FormEvent) => {
@@ -563,7 +756,7 @@ export function NahoGestionDashboard() {
             {activeTab === 'murales' && (
               <button
                 type="button"
-                onClick={() => setShowCategoryModal(true)}
+                onClick={openNewCategoryModal}
                 className="px-3.5 py-2 border border-white/15 hover:border-white/35 text-[10px] font-semibold uppercase tracking-[0.18em] text-white/80 hover:text-white flex items-center gap-2 transition-colors cursor-pointer"
               >
                 <FolderPlus className="w-3.5 h-3.5 text-naho-pink" />
@@ -704,24 +897,50 @@ export function NahoGestionDashboard() {
                       {cat.label}
                     </span>
 
-                    {muralCategories.length > 1 && (
+                    <div className="absolute top-2.5 right-2.5 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          deleteMuralCategory(cat.id);
-                          showToast(`Categoría "${cat.label}" eliminada.`);
+                          openEditCategoryModal(cat);
                         }}
-                        title={`Eliminar categoría ${cat.label}`}
-                        className={`absolute top-3 right-3 p-1 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer ${
+                        title={`Editar categoría ${cat.label}`}
+                        className={`p-1 transition-colors cursor-pointer ${
                           isSelected
-                            ? 'text-white/50 hover:text-rose-400'
-                            : 'text-neutral-300 hover:text-rose-600'
+                            ? 'text-white/60 hover:text-naho-pink'
+                            : 'text-neutral-400 hover:text-neutral-900'
                         }`}
                       >
-                        <X className="w-3.5 h-3.5" />
+                        <Edit3 className="w-3.5 h-3.5" />
                       </button>
-                    )}
+
+                      {muralCategories.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setConfirmDialog({
+                              title: `¿Eliminar categoría "${cat.label}"?`,
+                              message:
+                                'Se quitará esta categoría del filtro. Te recomendamos reasignar antes los murales que pertenezcan a ella.',
+                              confirmLabel: 'Sí, eliminar categoría',
+                              onConfirm: () => {
+                                deleteMuralCategory(cat.id);
+                                showToast(`Categoría "${cat.label}" eliminada.`);
+                              },
+                            });
+                          }}
+                          title={`Eliminar categoría ${cat.label}`}
+                          className={`p-1 transition-colors cursor-pointer ${
+                            isSelected
+                              ? 'text-white/50 hover:text-rose-400'
+                              : 'text-neutral-300 hover:text-rose-600'
+                          }`}
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 );
               })}
@@ -804,6 +1023,12 @@ export function NahoGestionDashboard() {
                         alt={item.title}
                         className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                       />
+                      {item.galleryImages && item.galleryImages.length > 0 && (
+                        <span className="absolute bottom-2.5 left-2.5 px-2 py-0.5 bg-black/75 text-white text-[9px] font-bold uppercase tracking-wider inline-flex items-center gap-1">
+                          <Images className="w-3 h-3 text-naho-yellow" />
+                          <span>+{item.galleryImages.length} fotos</span>
+                        </span>
+                      )}
                       {/* Hover quick actions */}
                       <div className="absolute top-3 right-3 flex items-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button
@@ -817,8 +1042,16 @@ export function NahoGestionDashboard() {
                         <button
                           type="button"
                           onClick={() => {
-                            deleteMuralItem(item.id);
-                            showToast(`Mural "${item.title}" eliminado.`);
+                            setConfirmDialog({
+                              title: `¿Eliminar mural "${item.title}"?`,
+                              message:
+                                'Esta obra se eliminará del catálogo público de murales. Esta acción no se puede deshacer.',
+                              confirmLabel: 'Sí, eliminar mural',
+                              onConfirm: () => {
+                                deleteMuralItem(item.id);
+                                showToast(`Mural "${item.title}" eliminado.`);
+                              },
+                            });
                           }}
                           className="p-2 bg-white/95 hover:bg-rose-600 hover:text-white text-rose-600 shadow-sm cursor-pointer transition-colors"
                           title="Eliminar mural"
@@ -911,7 +1144,8 @@ export function NahoGestionDashboard() {
                       Cursos del Mes
                     </h2>
                     <p className="text-xs text-neutral-400 mt-1">
-                      {courses.length} {courses.length === 1 ? 'curso activo' : 'cursos activos'} con envío automático de link
+                      {courses.filter((c) => c.active !== false).length} activos al público •{' '}
+                      {courses.filter((c) => c.active === false).length} ocultos en borrador
                     </p>
                   </div>
 
@@ -926,85 +1160,145 @@ export function NahoGestionDashboard() {
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {courses.map((course) => (
-                    <article
-                      key={course.id}
-                      className="group bg-white shadow-[0_4px_20px_rgba(0,0,0,0.04)] overflow-hidden flex flex-col justify-between"
-                    >
-                      <div>
-                        <div className="relative aspect-[16/10] bg-neutral-200 overflow-hidden">
-                          <img
-                            src={course.image}
-                            alt={course.title}
-                            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                          />
-                          <span className="absolute top-3 left-3 px-2.5 py-1 bg-[#181B20]/90 text-white text-[9px] font-semibold uppercase tracking-[0.18em]">
-                            {course.monthLabel}
-                          </span>
+                  {courses.map((course) => {
+                    const isCourseActive = course.active !== false;
+                    return (
+                      <article
+                        key={course.id}
+                        className={`group bg-white shadow-[0_4px_20px_rgba(0,0,0,0.04)] overflow-hidden flex flex-col justify-between transition-opacity ${
+                          isCourseActive ? '' : 'opacity-75 ring-1 ring-neutral-300'
+                        }`}
+                      >
+                        <div>
+                          <div className="relative aspect-[16/10] bg-neutral-200 overflow-hidden">
+                            <img
+                              src={course.image}
+                              alt={course.title}
+                              className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                            />
+                            <div className="absolute top-3 left-3 flex flex-wrap items-center gap-1.5">
+                              <span className="px-2.5 py-1 bg-[#181B20]/90 text-white text-[9px] font-semibold uppercase tracking-[0.18em]">
+                                {course.monthLabel}
+                              </span>
+                              <span
+                                className={`px-2 py-1 text-[9px] font-bold uppercase tracking-wider ${
+                                  isCourseActive
+                                    ? 'bg-emerald-600/95 text-white'
+                                    : 'bg-amber-500/95 text-neutral-950'
+                                }`}
+                              >
+                                {isCourseActive ? 'Visible' : 'Oculto / Borrador'}
+                              </span>
+                            </div>
 
-                          <div className="absolute top-3 right-3 flex items-center gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => openEditCourseModal(course)}
-                              className="p-2 bg-white/95 hover:bg-white text-neutral-900 shadow-sm cursor-pointer"
-                              title="Editar curso y link"
-                            >
-                              <Edit3 className="w-3.5 h-3.5" />
-                            </button>
+                            <div className="absolute top-3 right-3 flex items-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  updateCourse({ ...course, active: !isCourseActive });
+                                  showToast(
+                                    !isCourseActive
+                                      ? `Curso "${course.title}" activado al público.`
+                                      : `Curso "${course.title}" pausado (oculto en la web).`
+                                  );
+                                }}
+                                className="p-2 bg-white/95 hover:bg-white text-neutral-900 shadow-sm cursor-pointer"
+                                title={
+                                  isCourseActive
+                                    ? 'Pausar / ocultar curso del sitio público'
+                                    : 'Activar / mostrar curso en el sitio público'
+                                }
+                              >
+                                {isCourseActive ? (
+                                  <EyeOff className="w-3.5 h-3.5 text-amber-600" />
+                                ) : (
+                                  <Eye className="w-3.5 h-3.5 text-emerald-600" />
+                                )}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => openEditCourseModal(course)}
+                                className="p-2 bg-white/95 hover:bg-white text-neutral-900 shadow-sm cursor-pointer"
+                                title="Editar curso y link"
+                              >
+                                <Edit3 className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setConfirmDialog({
+                                    title: `¿Eliminar curso "${course.title}"?`,
+                                    message:
+                                      'Se eliminará este curso del catálogo. Si solo deseas ocultarlo temporalmente sin perder su configuración, usa el botón de Ocultar / Pausar.',
+                                    confirmLabel: 'Sí, eliminar curso',
+                                    onConfirm: () => {
+                                      deleteCourse(course.id);
+                                      showToast('Curso eliminado.');
+                                    },
+                                  });
+                                }}
+                                className="p-2 bg-white/95 hover:bg-rose-600 hover:text-white text-rose-600 shadow-sm cursor-pointer transition-colors"
+                                title="Eliminar curso"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="p-5 space-y-3">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-naho-pink">
+                                {course.eventDateDisplay} • {course.eventTimeDisplay}
+                              </span>
+                              <span className="px-2 py-0.5 bg-neutral-100 text-neutral-700 text-[9px] font-bold uppercase tracking-wider rounded">
+                                {course.modality === 'presencial'
+                                  ? 'Presencial'
+                                  : course.modality === 'hibrido'
+                                  ? 'Híbrido'
+                                  : 'Online En Vivo'}
+                              </span>
+                            </div>
+                            <h3 className="font-serif text-lg text-neutral-900 leading-snug">
+                              {course.title}
+                            </h3>
+                            <p className="text-[11px] text-neutral-500 flex items-center gap-1.5">
+                              <GraduationCap className="w-3.5 h-3.5 text-naho-blue shrink-0" />
+                              <span className="truncate">{course.level}</span>
+                            </p>
+                            <p className="text-xs text-neutral-500 line-clamp-2">
+                              {course.description}
+                            </p>
+                            <div className="pt-2 border-t border-black/[0.05] text-[11px] font-mono text-neutral-500 truncate">
+                              Link: <span className="text-neutral-900">{course.meetingLink}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="bg-[#181B20] text-white px-5 py-3.5 flex items-center justify-between text-xs">
+                          <span className="font-serif text-base">
+                            ${course.price.toLocaleString('es-MX')} MXN
+                          </span>
+                          <div className="flex items-center gap-2.5">
+                            <span className="text-[10px] uppercase tracking-[0.16em] text-white/60">
+                              Cupo: {course.enrolledCount}/{course.maxSpots}
+                            </span>
                             <button
                               type="button"
                               onClick={() => {
-                                deleteCourse(course.id);
-                                showToast('Curso eliminado.');
+                                setSelectedStudentCourseFilter(course.id);
+                                setActiveTab('alumnos');
                               }}
-                              className="p-2 bg-white/95 hover:bg-rose-600 hover:text-white text-rose-600 shadow-sm cursor-pointer transition-colors"
-                              title="Eliminar curso"
+                              className="px-2.5 py-1 bg-white/10 hover:bg-naho-pink text-white text-[9px] font-semibold uppercase tracking-wider rounded inline-flex items-center gap-1 transition-colors cursor-pointer"
+                              title="Ver alumnos inscritos en este curso"
                             >
-                              <Trash2 className="w-3.5 h-3.5" />
+                              <Users className="w-3 h-3 text-naho-pink" />
+                              <span>Alumnos</span>
                             </button>
                           </div>
                         </div>
-
-                        <div className="p-5 space-y-3">
-                          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-naho-pink">
-                            {course.eventDateDisplay} • {course.eventTimeDisplay}
-                          </div>
-                          <h3 className="font-serif text-lg text-neutral-900 leading-snug">
-                            {course.title}
-                          </h3>
-                          <p className="text-xs text-neutral-500 line-clamp-2">
-                            {course.description}
-                          </p>
-                          <div className="pt-2 border-t border-black/[0.05] text-[11px] font-mono text-neutral-500 truncate">
-                            Link: <span className="text-neutral-900">{course.meetingLink}</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="bg-[#181B20] text-white px-5 py-3.5 flex items-center justify-between text-xs">
-                        <span className="font-serif text-base">
-                          ${course.price.toLocaleString('es-MX')} MXN
-                        </span>
-                        <div className="flex items-center gap-2.5">
-                          <span className="text-[10px] uppercase tracking-[0.16em] text-white/60">
-                            Cupo: {course.enrolledCount}/{course.maxSpots}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedStudentCourseFilter(course.id);
-                              setActiveTab('alumnos');
-                            }}
-                            className="px-2.5 py-1 bg-white/10 hover:bg-naho-pink text-white text-[9px] font-semibold uppercase tracking-wider rounded inline-flex items-center gap-1 transition-colors cursor-pointer"
-                            title="Ver alumnos inscritos en este curso"
-                          >
-                            <Users className="w-3 h-3 text-naho-pink" />
-                            <span>Alumnos</span>
-                          </button>
-                        </div>
-                      </div>
-                    </article>
-                  ))}
+                      </article>
+                    );
+                  })}
                 </div>
               </div>
             ) : (
@@ -1021,20 +1315,30 @@ export function NahoGestionDashboard() {
                   </div>
 
                   {courseEnrollments.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const emails = Array.from(
-                          new Set(courseEnrollments.map((e) => e.buyerEmail.trim()))
-                        ).join(', ');
-                        navigator.clipboard.writeText(emails);
-                        showToast('Correos de alumnos copiados para Google Meet.');
-                      }}
-                      className="px-5 py-3 bg-[#181B20] hover:bg-naho-pink text-white text-[10px] font-semibold uppercase tracking-[0.18em] inline-flex items-center gap-2 transition-colors cursor-pointer self-start sm:self-auto"
-                    >
-                      <Copy className="w-3.5 h-3.5" />
-                      <span>Copiar Correos Autorizados</span>
-                    </button>
+                    <div className="flex flex-wrap items-center gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => handleExportStudentsCsv(courseEnrollments)}
+                        className="px-4 py-3 bg-white hover:bg-neutral-100 border border-neutral-300 text-neutral-800 text-[10px] font-semibold uppercase tracking-[0.18em] inline-flex items-center gap-2 transition-colors cursor-pointer"
+                      >
+                        <Download className="w-3.5 h-3.5 text-naho-pink" />
+                        <span>Exportar CSV</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const emails = Array.from(
+                            new Set(courseEnrollments.map((e) => e.buyerEmail.trim()))
+                          ).join(', ');
+                          navigator.clipboard.writeText(emails);
+                          showToast('Correos de alumnos copiados para Google Meet.');
+                        }}
+                        className="px-5 py-3 bg-[#181B20] hover:bg-naho-pink text-white text-[10px] font-semibold uppercase tracking-[0.18em] inline-flex items-center gap-2 transition-colors cursor-pointer self-start sm:self-auto"
+                      >
+                        <Copy className="w-3.5 h-3.5" />
+                        <span>Copiar Correos Autorizados</span>
+                      </button>
+                    </div>
                   )}
                 </div>
 
@@ -1068,17 +1372,27 @@ export function NahoGestionDashboard() {
                             1 Boleto Personal Confirmado
                           </span>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setSelectedStudentCourseFilter(enr.courseId);
-                            setActiveTab('alumnos');
-                          }}
-                          className="px-3 py-1.5 rounded-full bg-neutral-100 hover:bg-[#181B20] hover:text-white text-neutral-800 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors cursor-pointer self-start sm:self-auto"
-                        >
-                          <Users className="w-3 h-3 text-naho-pink" />
-                          <span>Ver en Pestaña Alumnos</span>
-                        </button>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleResendStudentTicket(enr)}
+                            className="px-3 py-1.5 rounded-full bg-neutral-100 hover:bg-[#181B20] hover:text-white text-neutral-800 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors cursor-pointer"
+                          >
+                            <Send className="w-3 h-3 text-naho-pink" />
+                            <span>Reenviar Boleto</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedStudentCourseFilter(enr.courseId);
+                              setActiveTab('alumnos');
+                            }}
+                            className="px-3 py-1.5 rounded-full bg-neutral-100 hover:bg-[#181B20] hover:text-white text-neutral-800 text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-colors cursor-pointer"
+                          >
+                            <Users className="w-3 h-3 text-naho-pink" />
+                            <span>Ver Ficha</span>
+                          </button>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -1207,8 +1521,15 @@ export function NahoGestionDashboard() {
                           <button
                             type="button"
                             onClick={() => {
-                              deleteQuoteTicket(ticket.folio);
-                              showToast(`Cotización ${ticket.folio} eliminada.`);
+                              setConfirmDialog({
+                                title: `¿Eliminar cotización ${ticket.folio}?`,
+                                message: `Se eliminará permanentemente la solicitud de ${ticket.formData.clientName}.`,
+                                confirmLabel: 'Sí, eliminar cotización',
+                                onConfirm: () => {
+                                  deleteQuoteTicket(ticket.folio);
+                                  showToast(`Cotización ${ticket.folio} eliminada.`);
+                                },
+                              });
                             }}
                             className="p-2 text-neutral-400 hover:text-rose-600 transition-colors cursor-pointer"
                             title="Eliminar cotización"
@@ -1282,6 +1603,50 @@ export function NahoGestionDashboard() {
                             <p className="text-sm text-neutral-800 leading-relaxed">
                               &ldquo;{ticket.formData.themeAndDetails}&rdquo;
                             </p>
+                          </div>
+
+                          {/* Internal Notes & Quoted Budget (#16) */}
+                          <div className="p-4 bg-white border border-black/[0.08] grid grid-cols-1 sm:grid-cols-12 gap-4">
+                            <div className="sm:col-span-4">
+                              <label className="block text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-500 mb-1.5">
+                                Presupuesto Cotizado ($ MXN)
+                              </label>
+                              <div className="relative">
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-mono text-neutral-400">
+                                  $
+                                </span>
+                                <input
+                                  type="number"
+                                  min={0}
+                                  placeholder="Ej. 8500"
+                                  value={ticket.quotedAmount ?? ''}
+                                  onChange={(e) => {
+                                    const raw = e.target.value;
+                                    updateQuoteTicketDetails(ticket.folio, {
+                                      quotedAmount: raw === '' ? undefined : Number(raw),
+                                    });
+                                  }}
+                                  className="w-full pl-7 pr-3 py-2 bg-[#F5F2EB]/50 border border-neutral-200 focus:border-naho-pink text-xs font-mono text-neutral-900 focus:outline-none"
+                                />
+                              </div>
+                            </div>
+
+                            <div className="sm:col-span-8">
+                              <label className="block text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-500 mb-1.5">
+                                Notas Internas / Seguimiento de Nahomy (Privado)
+                              </label>
+                              <input
+                                type="text"
+                                placeholder="Ej. Se acordó visita técnica el viernes a las 4pm, requiere andamio..."
+                                value={ticket.adminNotes ?? ''}
+                                onChange={(e) =>
+                                  updateQuoteTicketDetails(ticket.folio, {
+                                    adminNotes: e.target.value,
+                                  })
+                                }
+                                className="w-full px-3 py-2 bg-[#F5F2EB]/50 border border-neutral-200 focus:border-naho-pink text-xs text-neutral-900 focus:outline-none"
+                              />
+                            </div>
                           </div>
 
                           <div className="flex flex-wrap items-center gap-3 pt-2">
@@ -1365,36 +1730,48 @@ export function NahoGestionDashboard() {
 
               <div className="flex flex-wrap items-center gap-3 self-start sm:self-auto">
                 {filteredEnrollments.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const emails = Array.from(
-                        new Set(filteredEnrollments.map((e) => e.buyerEmail.trim()))
-                      ).join(', ');
-                      navigator.clipboard.writeText(emails);
-                      setCopiedStudentEmails(true);
-                      setTimeout(() => setCopiedStudentEmails(false), 2500);
-                      showToast(
-                        selectedStudentCourseFilter === 'all'
-                          ? 'Todos los correos copiados al portapapeles.'
-                          : `Correos del curso "${activeFilteredCourseObj?.title || 'seleccionado'}" copiados.`
-                      );
-                    }}
-                    className="px-5 py-3 bg-[#181B20] hover:bg-naho-pink text-white text-[11px] font-semibold uppercase tracking-[0.18em] inline-flex items-center gap-2 transition-colors cursor-pointer shadow-sm active:scale-95"
-                    title="Copiar correos de la lista actual para invitaciones en Google Meet"
-                  >
-                    {copiedStudentEmails ? (
-                      <>
-                        <Check className="w-3.5 h-3.5 text-emerald-400" />
-                        <span>¡Correos Copiados!</span>
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="w-3.5 h-3.5 text-naho-pink" />
-                        <span>Copiar Correos ({filteredEnrollments.length})</span>
-                      </>
-                    )}
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => handleExportStudentsCsv(filteredEnrollments)}
+                      className="px-4 py-3 bg-white hover:bg-neutral-100 border border-neutral-300 text-neutral-800 text-[11px] font-semibold uppercase tracking-[0.18em] inline-flex items-center gap-2 transition-colors cursor-pointer shadow-xs"
+                      title="Descargar lista en CSV compatible con Excel"
+                    >
+                      <Download className="w-3.5 h-3.5 text-naho-pink" />
+                      <span>Exportar CSV ({filteredEnrollments.length})</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const emails = Array.from(
+                          new Set(filteredEnrollments.map((e) => e.buyerEmail.trim()))
+                        ).join(', ');
+                        navigator.clipboard.writeText(emails);
+                        setCopiedStudentEmails(true);
+                        setTimeout(() => setCopiedStudentEmails(false), 2500);
+                        showToast(
+                          selectedStudentCourseFilter === 'all'
+                            ? 'Todos los correos copiados al portapapeles.'
+                            : `Correos del curso "${activeFilteredCourseObj?.title || 'seleccionado'}" copiados.`
+                        );
+                      }}
+                      className="px-5 py-3 bg-[#181B20] hover:bg-naho-pink text-white text-[11px] font-semibold uppercase tracking-[0.18em] inline-flex items-center gap-2 transition-colors cursor-pointer shadow-sm active:scale-95"
+                      title="Copiar correos de la lista actual para invitaciones en Google Meet"
+                    >
+                      {copiedStudentEmails ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-emerald-400" />
+                          <span>¡Correos Copiados!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5 text-naho-pink" />
+                          <span>Copiar Correos ({filteredEnrollments.length})</span>
+                        </>
+                      )}
+                    </button>
+                  </>
                 )}
 
                 <button
@@ -1781,7 +2158,18 @@ export function NahoGestionDashboard() {
                             </span>
                           </div>
 
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {/* Resend Ticket Email (#5) */}
+                            <button
+                              type="button"
+                              onClick={() => handleResendStudentTicket(enr)}
+                              className="px-2.5 py-2 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 text-[10px] font-semibold uppercase tracking-wider rounded-lg inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+                              title="Reenviar boleto y código de acceso al correo del alumno"
+                            >
+                              <Send className="w-3 h-3 text-naho-pink" />
+                              <span>Reenviar</span>
+                            </button>
+
                             {/* WhatsApp Direct Action */}
                             <a
                               href={`https://wa.me/52${enr.buyerPhone.replace(/\D/g, '')}?text=${encodeURIComponent(
@@ -1789,7 +2177,7 @@ export function NahoGestionDashboard() {
                               )}`}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="px-3.5 py-2 bg-[#25D366] hover:bg-[#20ba5a] text-white text-[10px] font-semibold uppercase tracking-wider rounded-lg inline-flex items-center gap-1.5 transition-colors shadow-xs active:scale-95"
+                              className="px-3 py-2 bg-[#25D366] hover:bg-[#20ba5a] text-white text-[10px] font-semibold uppercase tracking-wider rounded-lg inline-flex items-center gap-1.5 transition-colors shadow-xs active:scale-95"
                               title="Enviar mensaje por WhatsApp"
                             >
                               <MessageCircle className="w-3.5 h-3.5 fill-white" />
@@ -1803,12 +2191,32 @@ export function NahoGestionDashboard() {
                               )}&body=${encodeURIComponent(
                                 `Hola ${enr.buyerName},\n\nTe saluda Nahomy de Nahocraft Centro de Arte en Tampico.\n\nTe confirmo tu lugar para el curso "${enr.courseTitle}".\n\nDetalles de tu sesión:\n- Folio: ${enr.folio}\n- Código de Acceso: ${enr.accessCode}\n- Fecha: ${enr.courseDateDisplay}\n- Horario: ${enr.courseTimeDisplay}\n- Sala de Google Meet: ${enr.meetingLink}\n\nRecomendaciones:\n1. Conéctate 5 minutos antes para probar tu micrófono y cámara.\n2. Ten listos tus materiales y lienzos.\n\n¡Nos vemos en clase!\n\nNahomy • Nahocraft Centro de Arte\nTampico, Tamaulipas`
                               )}`}
-                              className="px-3.5 py-2 bg-[#181B20] hover:bg-naho-pink text-white text-[10px] font-semibold uppercase tracking-wider rounded-lg inline-flex items-center gap-1.5 transition-colors shadow-xs active:scale-95"
+                              className="px-3 py-2 bg-[#181B20] hover:bg-naho-pink text-white text-[10px] font-semibold uppercase tracking-wider rounded-lg inline-flex items-center gap-1.5 transition-colors shadow-xs active:scale-95"
                               title="Enviar correo personalizado"
                             >
                               <Mail className="w-3.5 h-3.5" />
                               <span>Correo</span>
                             </a>
+
+                            {/* Cancel / Unenroll Student (#5 & #11) */}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setConfirmDialog({
+                                  title: `¿Dar de baja a ${enr.buyerName}?`,
+                                  message: `Se cancelará el boleto ${enr.folio} (${enr.accessCode}) y se liberará +1 lugar disponible en el curso "${enr.courseTitle}".`,
+                                  confirmLabel: 'Sí, cancelar boleto y liberar cupo',
+                                  onConfirm: () => {
+                                    deleteCourseEnrollment(enr.id);
+                                    showToast(`Boleto de ${enr.buyerName} cancelado y cupo liberado.`);
+                                  },
+                                });
+                              }}
+                              className="p-2 text-neutral-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                              title="Cancelar boleto y liberar lugar en el curso"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
                           </div>
                         </div>
                       </div>
@@ -1852,21 +2260,21 @@ export function NahoGestionDashboard() {
             <div className="grid grid-cols-1 xl:grid-cols-12 gap-8 items-start">
               {/* Form Editor (7 cols) */}
               <div className="xl:col-span-7 bg-white p-6 sm:p-8 shadow-[0_4px_20px_rgba(0,0,0,0.03)] border border-black/[0.04] space-y-8">
-                {/* Portrait Upload Row */}
-                <div className="flex flex-col sm:flex-row sm:items-center gap-6 pb-6 border-b border-black/[0.06]">
-                  <img
-                    src={aboutMe.portraitImage}
-                    alt="Retrato Sobre Mí"
-                    className="w-28 h-36 object-cover bg-neutral-100 border border-black/10 shrink-0 shadow-xs"
-                  />
-                  <div className="space-y-3 flex-1">
-                    <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-neutral-400 block">
-                      Fotografía Principal de Nahomy
-                    </span>
-                    <div className="flex flex-wrap items-center gap-3">
-                      <label className="px-5 py-2.5 bg-[#181B20] hover:bg-naho-pink text-white text-[10px] font-semibold uppercase tracking-[0.18em] inline-flex items-center gap-2 cursor-pointer transition-colors shadow-xs">
+                {/* Portrait & Secondary Image Upload Row (#9) */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-6 border-b border-black/[0.06]">
+                  <div className="flex items-center gap-4">
+                    <img
+                      src={aboutMe.portraitImage}
+                      alt="Retrato Sobre Mí"
+                      className="w-24 h-32 object-cover bg-neutral-100 border border-black/10 shrink-0 shadow-xs"
+                    />
+                    <div className="space-y-2.5 flex-1">
+                      <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-neutral-400 block">
+                        Retrato Principal
+                      </span>
+                      <label className="px-4 py-2 bg-[#181B20] hover:bg-naho-pink text-white text-[10px] font-semibold uppercase tracking-[0.18em] inline-flex items-center gap-2 cursor-pointer transition-colors shadow-xs">
                         <Upload className="w-3.5 h-3.5" />
-                        <span>Cambiar Fotografía</span>
+                        <span>Cambiar Foto</span>
                         <input
                           type="file"
                           accept="image/*"
@@ -1874,23 +2282,65 @@ export function NahoGestionDashboard() {
                           onChange={(e) =>
                             handleImageFileUpload(e, (url) => {
                               updateAboutMe({ portraitImage: url });
-                              showToast('Fotografía actualizada.');
+                              showToast('Fotografía principal actualizada.');
                             })
                           }
                         />
                       </label>
                     </div>
-                    <div className="pt-2 max-w-sm">
-                      <label className="block text-[10px] font-semibold uppercase tracking-[0.2em] text-neutral-400 mb-1.5">
-                        Firma al pie de foto
+                  </div>
+
+                  <div className="flex items-center gap-4">
+                    <img
+                      src={aboutMe.secondaryImage}
+                      alt="Imagen Secundaria Sobre Mí"
+                      className="w-24 h-32 object-cover bg-neutral-100 border border-black/10 shrink-0 shadow-xs"
+                    />
+                    <div className="space-y-2.5 flex-1">
+                      <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-neutral-400 block">
+                        Foto Secundaria / Taller
+                      </span>
+                      <label className="px-4 py-2 bg-[#F5F2EB] hover:bg-neutral-200 text-neutral-900 border border-neutral-300 text-[10px] font-semibold uppercase tracking-[0.18em] inline-flex items-center gap-2 cursor-pointer transition-colors">
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>Cambiar Secundaria</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) =>
+                            handleImageFileUpload(e, (url) => {
+                              updateAboutMe({ secondaryImage: url });
+                              showToast('Fotografía secundaria actualizada.');
+                            })
+                          }
+                        />
                       </label>
-                      <input
-                        type="text"
-                        value={aboutMe.signatureText}
-                        onChange={(e) => updateAboutMe({ signatureText: e.target.value })}
-                        className="w-full py-2 bg-transparent border-b border-neutral-300 focus:border-naho-pink text-sm text-neutral-900 focus:outline-none"
-                      />
                     </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                  <div>
+                    <label className="block text-[10px] font-semibold uppercase tracking-[0.2em] text-neutral-400 mb-2">
+                      Insignia Superior (Badge)
+                    </label>
+                    <input
+                      type="text"
+                      value={aboutMe.badge}
+                      onChange={(e) => updateAboutMe({ badge: e.target.value })}
+                      className="w-full py-2.5 bg-transparent border-b border-neutral-300 focus:border-naho-pink text-sm text-neutral-900 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-semibold uppercase tracking-[0.2em] text-neutral-400 mb-2">
+                      Firma al pie de foto
+                    </label>
+                    <input
+                      type="text"
+                      value={aboutMe.signatureText}
+                      onChange={(e) => updateAboutMe({ signatureText: e.target.value })}
+                      className="w-full py-2.5 bg-transparent border-b border-neutral-300 focus:border-naho-pink text-sm text-neutral-900 focus:outline-none"
+                    />
                   </div>
                 </div>
 
@@ -1915,6 +2365,43 @@ export function NahoGestionDashboard() {
                       value={aboutMe.subtitle}
                       onChange={(e) => updateAboutMe({ subtitle: e.target.value })}
                       className="w-full py-2.5 bg-transparent border-b border-neutral-300 focus:border-naho-pink text-sm text-neutral-900 focus:outline-none"
+                    />
+                  </div>
+                </div>
+
+                {/* Metric Counters (#9) */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 p-4 bg-[#F5F2EB]/60 border border-black/[0.05]">
+                  <div>
+                    <label className="block text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-500 mb-1">
+                      Años de Experiencia
+                    </label>
+                    <input
+                      type="text"
+                      value={aboutMe.yearsExperience}
+                      onChange={(e) => updateAboutMe({ yearsExperience: e.target.value })}
+                      className="w-full py-1.5 bg-white px-2.5 border border-neutral-200 focus:border-naho-pink text-xs text-neutral-900 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-500 mb-1">
+                      Etiqueta de Murales
+                    </label>
+                    <input
+                      type="text"
+                      value={aboutMe.muralCountLabel}
+                      onChange={(e) => updateAboutMe({ muralCountLabel: e.target.value })}
+                      className="w-full py-1.5 bg-white px-2.5 border border-neutral-200 focus:border-naho-pink text-xs text-neutral-900 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-500 mb-1">
+                      Etiqueta de Alumnos
+                    </label>
+                    <input
+                      type="text"
+                      value={aboutMe.studentsCountLabel}
+                      onChange={(e) => updateAboutMe({ studentsCountLabel: e.target.value })}
+                      className="w-full py-1.5 bg-white px-2.5 border border-neutral-200 focus:border-naho-pink text-xs text-neutral-900 focus:outline-none"
                     />
                   </div>
                 </div>
@@ -1966,6 +2453,54 @@ export function NahoGestionDashboard() {
                     />
                   </div>
                 </div>
+
+                {/* Highlights / Pilares Editor (#9) */}
+                {aboutMe.highlights && aboutMe.highlights.length > 0 && (
+                  <div className="pt-4 border-t border-black/[0.06] space-y-4">
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-neutral-400 block">
+                      Tarjetas Destacadas de Trayectoria (3 Pilares)
+                    </span>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                      {aboutMe.highlights.map((hl, idx) => (
+                        <div
+                          key={idx}
+                          className="p-3.5 bg-[#F5F2EB]/60 border border-black/[0.05] space-y-2.5"
+                        >
+                          <div>
+                            <label className="block text-[9px] font-semibold uppercase tracking-wider text-neutral-400 mb-1">
+                              Título Pilar #{idx + 1}
+                            </label>
+                            <input
+                              type="text"
+                              value={hl.title}
+                              onChange={(e) => {
+                                const next = [...aboutMe.highlights];
+                                next[idx] = { ...hl, title: e.target.value };
+                                updateAboutMe({ highlights: next });
+                              }}
+                              className="w-full py-1.5 px-2 bg-white border border-neutral-200 focus:border-naho-pink text-xs font-semibold text-neutral-900 focus:outline-none"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[9px] font-semibold uppercase tracking-wider text-neutral-400 mb-1">
+                              Descripción
+                            </label>
+                            <textarea
+                              rows={2}
+                              value={hl.description}
+                              onChange={(e) => {
+                                const next = [...aboutMe.highlights];
+                                next[idx] = { ...hl, description: e.target.value };
+                                updateAboutMe({ highlights: next });
+                              }}
+                              className="w-full p-2 bg-white border border-neutral-200 focus:border-naho-pink text-xs text-neutral-700 focus:outline-none"
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Right Column: Sticky Live Visual Mockup (5 cols) */}
@@ -1984,7 +2519,7 @@ export function NahoGestionDashboard() {
                   {/* Header Badge */}
                   <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-black/[0.04] text-neutral-700 border border-black/[0.06]">
                     <Sparkles className="w-3 h-3 text-naho-pink" />
-                    Sobre Mí • Artista Visual
+                    {aboutMe.badge || 'Sobre Mí • Artista Visual'}
                   </div>
 
                   {/* Portrait Card */}
@@ -2043,7 +2578,7 @@ export function NahoGestionDashboard() {
                   {/* Metric Chips */}
                   <div className="grid grid-cols-3 gap-2 pt-1 text-center">
                     <div className="p-2.5 rounded-xl bg-white border border-black/[0.04] shadow-2xs">
-                      <span className="block font-serif text-base font-bold text-neutral-900 leading-tight">
+                      <span className="block font-serif text-xs font-bold text-neutral-900 leading-tight truncate">
                         {aboutMe.yearsExperience || '+6 Años'}
                       </span>
                       <span className="block text-[8px] uppercase tracking-wider text-neutral-400 mt-0.5">
@@ -2052,18 +2587,18 @@ export function NahoGestionDashboard() {
                     </div>
                     <div className="p-2.5 rounded-xl bg-white border border-black/[0.04] shadow-2xs">
                       <span className="block font-serif text-xs font-bold text-neutral-900 leading-tight truncate">
-                        Tampico
+                        {aboutMe.muralCountLabel || 'Muralismo'}
                       </span>
                       <span className="block text-[8px] uppercase tracking-wider text-neutral-400 mt-0.5">
-                        Madero / Altamira
+                        Obra a Medida
                       </span>
                     </div>
                     <div className="p-2.5 rounded-xl bg-white border border-black/[0.04] shadow-2xs">
                       <span className="block font-serif text-xs font-bold text-naho-pink leading-tight truncate">
-                        Taller Físico
+                        {aboutMe.studentsCountLabel || 'Taller de Arte'}
                       </span>
                       <span className="block text-[8px] uppercase tracking-wider text-neutral-400 mt-0.5">
-                        Col. Minerva
+                        Formación
                       </span>
                     </div>
                   </div>
@@ -2088,7 +2623,7 @@ export function NahoGestionDashboard() {
                   Portada Principal (Hero) & Datos del Taller
                 </h2>
                 <p className="text-xs text-neutral-400 mt-1">
-                  Edita la portada de bienvenida y los datos del estudio. Puedes ver los cambios reflejados en tiempo real.
+                  Edita la portada de bienvenida, redes sociales, horarios del taller y clases presenciales.
                 </p>
               </div>
 
@@ -2110,13 +2645,38 @@ export function NahoGestionDashboard() {
                   <div className="flex items-center justify-between border-b border-black/[0.06] pb-4">
                     <div>
                       <h3 className="font-serif text-xl text-neutral-900 font-normal">
-                        Textos de la Portada Principal
+                        Textos de la Portada Principal & Contacto
                       </h3>
                       <p className="text-xs text-neutral-400 mt-0.5">
                         El primer mensaje que ven tus visitantes al entrar a la web
                       </p>
                     </div>
                     <Store className="w-5 h-5 text-naho-pink" />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                    <div>
+                      <label className="block text-[10px] font-semibold uppercase tracking-[0.2em] text-neutral-400 mb-2">
+                        Insignia Superior del Hero (Badge)
+                      </label>
+                      <input
+                        type="text"
+                        value={siteConfig.heroBadge}
+                        onChange={(e) => updateSiteConfig({ heroBadge: e.target.value })}
+                        className="w-full py-2.5 bg-transparent border-b border-neutral-300 focus:border-naho-pink text-sm text-neutral-900 focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-semibold uppercase tracking-[0.2em] text-neutral-400 mb-2">
+                        Nombre Oficial del Estudio
+                      </label>
+                      <input
+                        type="text"
+                        value={siteConfig.studioName}
+                        onChange={(e) => updateSiteConfig({ studioName: e.target.value })}
+                        className="w-full py-2.5 bg-transparent border-b border-neutral-300 focus:border-naho-pink text-sm text-neutral-900 focus:outline-none"
+                      />
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
@@ -2156,7 +2716,7 @@ export function NahoGestionDashboard() {
                     />
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 pt-3 border-t border-black/[0.05]">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 pt-3 border-t border-black/[0.05]">
                     <div>
                       <label className="block text-[10px] font-semibold uppercase tracking-[0.2em] text-neutral-400 mb-2">
                         Dirección del Taller Físico
@@ -2166,17 +2726,6 @@ export function NahoGestionDashboard() {
                         value={siteConfig.studioAddress}
                         onChange={(e) => updateSiteConfig({ studioAddress: e.target.value })}
                         className="w-full py-2 bg-transparent border-b border-neutral-300 focus:border-naho-pink text-xs text-neutral-900 focus:outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-semibold uppercase tracking-[0.2em] text-neutral-400 mb-2">
-                        Teléfono / WhatsApp de Contacto
-                      </label>
-                      <input
-                        type="text"
-                        value={siteConfig.studioPhone}
-                        onChange={(e) => updateSiteConfig({ studioPhone: e.target.value })}
-                        className="w-full py-2 bg-transparent border-b border-neutral-300 focus:border-naho-pink text-xs font-mono text-neutral-900 focus:outline-none"
                       />
                     </div>
                     <div>
@@ -2191,295 +2740,591 @@ export function NahoGestionDashboard() {
                       />
                     </div>
                   </div>
-                </div>
 
-            {/* In-Person Classes (Niños, Adolescentes y Adultos) */}
-            <div className="bg-white p-8 sm:p-10 shadow-[0_4px_20px_rgba(0,0,0,0.03)] space-y-6">
-              <div>
-                <h2 className="font-serif text-2xl text-neutral-900 font-normal">
-                  Clases Presenciales en el Taller
-                </h2>
-                <p className="text-xs text-neutral-400 mt-0.5">
-                  Programas para Niños, Adolescentes y Adultos
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {inPersonClasses.map((cls, idx) => (
-                  <div
-                    key={cls.id}
-                    className="p-6 bg-[#F5F2EB]/60 border border-black/[0.05] space-y-4"
-                  >
-                    <span className="inline-block px-3 py-1 bg-[#181B20] text-white text-[10px] font-semibold uppercase tracking-[0.18em]">
-                      {cls.audience} ({cls.ageRange})
-                    </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                     <div>
-                      <label className="block text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-400 mb-1">
-                        Título
+                      <label className="block text-[10px] font-semibold uppercase tracking-[0.2em] text-neutral-400 mb-2">
+                        Teléfono Visible al Público
                       </label>
                       <input
                         type="text"
-                        value={cls.title}
-                        onChange={(e) => {
-                          const next = [...inPersonClasses];
-                          next[idx] = { ...cls, title: e.target.value };
-                          updateInPersonClasses(next);
-                        }}
-                        className="w-full py-2 bg-transparent border-b border-neutral-300 focus:border-naho-pink text-xs text-neutral-900 focus:outline-none"
+                        value={siteConfig.studioPhone}
+                        onChange={(e) => updateSiteConfig({ studioPhone: e.target.value })}
+                        className="w-full py-2 bg-transparent border-b border-neutral-300 focus:border-naho-pink text-xs font-mono text-neutral-900 focus:outline-none"
                       />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-400 mb-1">
-                        Horarios
+                      <label className="block text-[10px] font-semibold uppercase tracking-[0.2em] text-neutral-400 mb-2">
+                        WhatsApp (con código de país, ej. 528333655622)
                       </label>
                       <input
                         type="text"
-                        value={cls.scheduleSummary}
-                        onChange={(e) => {
-                          const next = [...inPersonClasses];
-                          next[idx] = { ...cls, scheduleSummary: e.target.value };
-                          updateInPersonClasses(next);
-                        }}
-                        className="w-full py-2 bg-transparent border-b border-neutral-300 focus:border-naho-pink text-xs text-neutral-900 focus:outline-none"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-400 mb-1">
-                        Descripción
-                      </label>
-                      <textarea
-                        rows={3}
-                        value={cls.description}
-                        onChange={(e) => {
-                          const next = [...inPersonClasses];
-                          next[idx] = { ...cls, description: e.target.value };
-                          updateInPersonClasses(next);
-                        }}
-                        className="w-full p-2.5 bg-white border border-neutral-200 text-xs text-neutral-900 focus:outline-none"
+                        value={siteConfig.studioWhatsapp}
+                        onChange={(e) => updateSiteConfig({ studioWhatsapp: e.target.value })}
+                        className="w-full py-2 bg-transparent border-b border-neutral-300 focus:border-naho-pink text-xs font-mono text-neutral-900 focus:outline-none"
                       />
                     </div>
                   </div>
-                ))}
-              </div>
-            </div>
 
-            {/* Studio Photos Gallery */}
-            <div className="bg-white p-8 sm:p-10 shadow-[0_4px_20px_rgba(0,0,0,0.03)] space-y-6">
-              <div>
-                <h2 className="font-serif text-2xl text-neutral-900 font-normal">
-                  Fotografías del Taller Físico ({studioPhotos.length})
-                </h2>
-                <p className="text-xs text-neutral-400 mt-0.5">
-                  Muestra cómo se ve el estudio donde impartes clases en Tampico
-                </p>
-              </div>
-
-              <form
-                onSubmit={handleAddStudioPhoto}
-                className="p-6 bg-[#F5F2EB]/60 border border-black/[0.05] grid grid-cols-1 sm:grid-cols-4 gap-4 items-end"
-              >
-                <div>
-                  <label className="block text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-400 mb-1.5">
-                    Título *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ej. Área de caballetes"
-                    value={newStudioPhoto.title}
-                    onChange={(e) =>
-                      setNewStudioPhoto((p) => ({ ...p, title: e.target.value }))
-                    }
-                    className="w-full py-2 bg-transparent border-b border-neutral-300 text-xs focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-400 mb-1.5">
-                    Descripción
-                  </label>
-                  <input
-                    type="text"
-                    placeholder="Ej. Clases vespertinas"
-                    value={newStudioPhoto.caption}
-                    onChange={(e) =>
-                      setNewStudioPhoto((p) => ({ ...p, caption: e.target.value }))
-                    }
-                    className="w-full py-2 bg-transparent border-b border-neutral-300 text-xs focus:outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-400 mb-1.5">
-                    Archivo de Imagen
-                  </label>
-                  <label className="w-full py-2.5 px-3 bg-white border border-neutral-300 text-[10px] font-semibold uppercase tracking-[0.16em] cursor-pointer flex items-center justify-center gap-1.5">
-                    <Upload className="w-3.5 h-3.5" />
-                    <span>Elegir Foto</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      className="hidden"
-                      onChange={(e) =>
-                        handleImageFileUpload(e, (url) =>
-                          setNewStudioPhoto((p) => ({ ...p, image: url }))
-                        )
-                      }
-                    />
-                  </label>
-                </div>
-                <button
-                  type="submit"
-                  className="py-3 px-5 bg-[#181B20] hover:bg-naho-pink text-white text-[10px] font-semibold uppercase tracking-[0.18em] transition-colors cursor-pointer"
-                >
-                  + Agregar Foto
-                </button>
-              </form>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-                {studioPhotos.map((p) => (
-                  <div
-                    key={p.id}
-                    className="group bg-white border border-black/[0.06] overflow-hidden flex flex-col justify-between"
-                  >
-                    <img src={p.image} alt={p.title} className="w-full h-44 object-cover" />
-                    <div className="bg-[#181B20] text-white p-4 flex items-center justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="font-serif text-sm truncate">{p.title}</p>
-                        <p className="text-[10px] text-white/50 truncate">{p.caption}</p>
+                  {/* Social Media Handles & Links (#9) */}
+                  <div className="pt-4 border-t border-black/[0.06] space-y-4">
+                    <span className="text-[10px] font-semibold uppercase tracking-[0.2em] text-neutral-500 block">
+                      Redes Sociales Oficiales (Usuarios y Enlaces)
+                    </span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="p-3 bg-[#F5F2EB]/50 border border-black/[0.05] space-y-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-naho-pink block">
+                          Instagram
+                        </span>
+                        <input
+                          type="text"
+                          placeholder="@nahocraft"
+                          value={siteConfig.instagramHandle || ''}
+                          onChange={(e) => updateSiteConfig({ instagramHandle: e.target.value })}
+                          className="w-full py-1 px-2 bg-white border border-neutral-200 text-xs text-neutral-900 focus:outline-none"
+                        />
+                        <input
+                          type="url"
+                          placeholder="https://instagram.com/nahocraft"
+                          value={siteConfig.instagramUrl || ''}
+                          onChange={(e) => updateSiteConfig({ instagramUrl: e.target.value })}
+                          className="w-full py-1 px-2 bg-white border border-neutral-200 text-[11px] font-mono text-neutral-600 focus:outline-none"
+                        />
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          deleteStudioPhoto(p.id);
-                          showToast('Foto del taller eliminada.');
-                        }}
-                        className="p-1.5 text-white/50 hover:text-rose-400 cursor-pointer"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+
+                      <div className="p-3 bg-[#F5F2EB]/50 border border-black/[0.05] space-y-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-800 block">
+                          TikTok
+                        </span>
+                        <input
+                          type="text"
+                          placeholder="@nahocraft"
+                          value={siteConfig.tiktokHandle || ''}
+                          onChange={(e) => updateSiteConfig({ tiktokHandle: e.target.value })}
+                          className="w-full py-1 px-2 bg-white border border-neutral-200 text-xs text-neutral-900 focus:outline-none"
+                        />
+                        <input
+                          type="url"
+                          placeholder="https://tiktok.com/@nahocraft"
+                          value={siteConfig.tiktokUrl || ''}
+                          onChange={(e) => updateSiteConfig({ tiktokUrl: e.target.value })}
+                          className="w-full py-1 px-2 bg-white border border-neutral-200 text-[11px] font-mono text-neutral-600 focus:outline-none"
+                        />
+                      </div>
+
+                      <div className="p-3 bg-[#F5F2EB]/50 border border-black/[0.05] space-y-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-naho-blue block">
+                          Facebook
+                        </span>
+                        <input
+                          type="text"
+                          placeholder="Nahocraft Centro de Arte"
+                          value={siteConfig.facebookHandle || ''}
+                          onChange={(e) => updateSiteConfig({ facebookHandle: e.target.value })}
+                          className="w-full py-1 px-2 bg-white border border-neutral-200 text-xs text-neutral-900 focus:outline-none"
+                        />
+                        <input
+                          type="url"
+                          placeholder="https://facebook.com/nahocraft"
+                          value={siteConfig.facebookUrl || ''}
+                          onChange={(e) => updateSiteConfig({ facebookUrl: e.target.value })}
+                          className="w-full py-1 px-2 bg-white border border-neutral-200 text-[11px] font-mono text-neutral-600 focus:outline-none"
+                        />
+                      </div>
+
+                      <div className="p-3 bg-[#F5F2EB]/50 border border-black/[0.05] space-y-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-rose-600 block">
+                          YouTube
+                        </span>
+                        <input
+                          type="text"
+                          placeholder="Nahocraft Studio"
+                          value={siteConfig.youtubeHandle || ''}
+                          onChange={(e) => updateSiteConfig({ youtubeHandle: e.target.value })}
+                          className="w-full py-1 px-2 bg-white border border-neutral-200 text-xs text-neutral-900 focus:outline-none"
+                        />
+                        <input
+                          type="url"
+                          placeholder="https://youtube.com/@nahocraft"
+                          value={siteConfig.youtubeUrl || ''}
+                          onChange={(e) => updateSiteConfig({ youtubeUrl: e.target.value })}
+                          className="w-full py-1 px-2 bg-white border border-neutral-200 text-[11px] font-mono text-neutral-600 focus:outline-none"
+                        />
+                      </div>
                     </div>
                   </div>
-                ))}
-              </div>
-              </div>
-            </div>
-
-            {/* Right Column: Sticky Live Visual Mockup (5 cols) */}
-            <div className="xl:col-span-5 xl:sticky xl:top-28 space-y-6">
-              <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-500 px-1">
-                <span className="flex items-center gap-1.5 text-naho-pink">
-                  <Sparkles className="w-3.5 h-3.5" />
-                  Vista Previa de la Portada en Vivo
-                </span>
-                <span className="text-[10px] text-neutral-400">Hero Section</span>
-              </div>
-
-              {/* Hero Mockup Card */}
-              <div className="bg-[#FAF7F2] rounded-3xl p-6 sm:p-7 border border-black/[0.06] shadow-xl space-y-5 overflow-hidden relative">
-                <div className="absolute top-0 right-0 w-48 h-48 bg-naho-yellow/15 rounded-full blur-3xl pointer-events-none" />
-                <div className="absolute bottom-0 left-0 w-48 h-48 bg-naho-pink/10 rounded-full blur-3xl pointer-events-none" />
-
-                {/* Badge */}
-                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-black/[0.04] text-neutral-700 border border-black/[0.06]">
-                  <span className="w-1.5 h-1.5 rounded-full bg-naho-pink animate-ping" />
-                  Centro de Arte & Muralismo • Tampico
                 </div>
 
-                {/* Title Preview */}
-                <div className="space-y-1">
-                  <h1 className="text-xl sm:text-2xl font-black text-neutral-900 tracking-tight leading-tight">
-                    {siteConfig.heroTitleLine1 || 'Cursos de arte en vivo y'}{' '}
-                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-naho-pink via-naho-orange to-naho-yellow">
-                      {siteConfig.heroTitleHighlight || 'murales que transforman espacios.'}
-                    </span>
-                  </h1>
-                </div>
-
-                {/* Description Preview */}
-                <p className="text-xs sm:text-sm text-neutral-600 leading-relaxed line-clamp-3">
-                  {siteConfig.heroDescription ||
-                    'Inscríbete a nuestros cursos mensuales con cupo limitado o cotiza un mural personalizado en Tampico, Ciudad Madero y Altamira.'}
-                </p>
-
-                {/* Mock CTA Buttons */}
-                <div className="flex items-center gap-2.5 pt-1">
-                  <div className="px-4 py-2 rounded-full bg-neutral-950 text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm">
-                    <span>Ver Cursos</span>
-                    <ArrowUpRight className="w-3 h-3 text-neutral-300" />
+                {/* Studio Weekly Schedule Editor (#8) */}
+                <div className="bg-white p-6 sm:p-8 shadow-[0_4px_20px_rgba(0,0,0,0.03)] border border-black/[0.04] space-y-5">
+                  <div className="flex items-center justify-between border-b border-black/[0.06] pb-4">
+                    <div>
+                      <h3 className="font-serif text-xl text-neutral-900 font-normal">
+                        Horarios del Taller Físico (Abierto / Cerrado en Tiempo Real)
+                      </h3>
+                      <p className="text-xs text-neutral-400 mt-0.5">
+                        El indicador &ldquo;Taller Abierto / Cerrado&rdquo; en la barra superior se calcula automáticamente con estos horarios
+                      </p>
+                    </div>
+                    <Clock className="w-5 h-5 text-naho-blue" />
                   </div>
-                  <div className="px-4 py-2 rounded-full bg-white text-neutral-800 text-xs font-semibold border border-black/10 shadow-2xs">
-                    Cotizar Mural
+
+                  <div className="divide-y divide-black/[0.06]">
+                    {weeklySchedule.map((dayItem, idx) => {
+                      const formatHourLabel = (h: number) => {
+                        if (h === 0) return '12:00 AM';
+                        if (h < 12) return `${h}:00 AM`;
+                        if (h === 12) return '12:00 PM';
+                        return `${h - 12}:00 PM`;
+                      };
+
+                      return (
+                        <div
+                          key={dayItem.dayName}
+                          className="py-3 flex flex-wrap items-center justify-between gap-3"
+                        >
+                          <div className="flex items-center gap-3 min-w-[140px]">
+                            <input
+                              type="checkbox"
+                              checked={dayItem.isOpen}
+                              onChange={(e) => {
+                                const isOpen = e.target.checked;
+                                const openH = dayItem.openHour ?? 15;
+                                const closeH = dayItem.closeHour ?? 20;
+                                const next = [...weeklySchedule];
+                                next[idx] = {
+                                  ...dayItem,
+                                  isOpen,
+                                  openHour: openH,
+                                  closeHour: closeH,
+                                  displayTime: isOpen
+                                    ? `${formatHourLabel(openH)} – ${formatHourLabel(closeH)}`
+                                    : 'Cerrado',
+                                };
+                                updateWeeklySchedule(next);
+                              }}
+                              className="accent-naho-pink w-4 h-4 rounded cursor-pointer"
+                            />
+                            <span className="font-serif text-sm font-semibold text-neutral-900">
+                              {dayItem.dayName}
+                            </span>
+                          </div>
+
+                          {dayItem.isOpen ? (
+                            <div className="flex flex-wrap items-center gap-2 text-xs">
+                              <label className="text-[10px] uppercase tracking-wider text-neutral-400">
+                                Abre:
+                              </label>
+                              <select
+                                value={dayItem.openHour ?? 15}
+                                onChange={(e) => {
+                                  const openH = Number(e.target.value);
+                                  const closeH = dayItem.closeHour ?? 20;
+                                  const next = [...weeklySchedule];
+                                  next[idx] = {
+                                    ...dayItem,
+                                    openHour: openH,
+                                    displayTime: `${formatHourLabel(openH)} – ${formatHourLabel(closeH)}`,
+                                  };
+                                  updateWeeklySchedule(next);
+                                }}
+                                className="py-1 px-2 bg-[#F5F2EB] border border-neutral-300 text-xs font-mono"
+                              >
+                                {Array.from({ length: 16 }, (_, i) => i + 7).map((h) => (
+                                  <option key={h} value={h}>
+                                    {formatHourLabel(h)}
+                                  </option>
+                                ))}
+                              </select>
+
+                              <label className="text-[10px] uppercase tracking-wider text-neutral-400 ml-1">
+                                Cierra:
+                              </label>
+                              <select
+                                value={dayItem.closeHour ?? 20}
+                                onChange={(e) => {
+                                  const closeH = Number(e.target.value);
+                                  const openH = dayItem.openHour ?? 15;
+                                  const next = [...weeklySchedule];
+                                  next[idx] = {
+                                    ...dayItem,
+                                    closeHour: closeH,
+                                    displayTime: `${formatHourLabel(openH)} – ${formatHourLabel(closeH)}`,
+                                  };
+                                  updateWeeklySchedule(next);
+                                }}
+                                className="py-1 px-2 bg-[#F5F2EB] border border-neutral-300 text-xs font-mono"
+                              >
+                                {Array.from({ length: 16 }, (_, i) => i + 8).map((h) => (
+                                  <option key={h} value={h}>
+                                    {formatHourLabel(h)}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+                          ) : (
+                            <span className="text-xs font-mono uppercase tracking-widest text-neutral-400">
+                              Cerrado (Descanso)
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
 
-                {/* Floating Mini Mural Card */}
-                <div className="p-3 bg-white rounded-2xl border border-black/[0.05] shadow-sm flex items-center gap-3">
-                  <img
-                    src={localAssets.murales.dulceria}
-                    alt="Mural Preview"
-                    className="w-14 h-12 rounded-lg object-cover border border-black/5"
-                  />
+                {/* In-Person Classes (Niños, Adolescentes y Adultos) (#9) */}
+                <div className="bg-white p-8 sm:p-10 shadow-[0_4px_20px_rgba(0,0,0,0.03)] space-y-6">
                   <div>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-naho-pink block">
-                      Muralismo a Medida
-                    </span>
-                    <p className="text-xs font-bold text-neutral-900">
-                      Tampico, Cd. Madero & Altamira
+                    <h2 className="font-serif text-2xl text-neutral-900 font-normal">
+                      Clases Presenciales en el Taller
+                    </h2>
+                    <p className="text-xs text-neutral-400 mt-0.5">
+                      Programas para Niños, Adolescentes y Adultos (incluye edades, mensualidad y técnicas)
                     </p>
                   </div>
+
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {inPersonClasses.map((cls, idx) => (
+                      <div
+                        key={cls.id}
+                        className="p-5 bg-[#F5F2EB]/60 border border-black/[0.05] space-y-3.5"
+                      >
+                        <span className="inline-block px-3 py-1 bg-[#181B20] text-white text-[10px] font-semibold uppercase tracking-[0.18em]">
+                          {cls.audience}
+                        </span>
+                        <div>
+                          <label className="block text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-400 mb-1">
+                            Rango de Edad
+                          </label>
+                          <input
+                            type="text"
+                            value={cls.ageRange}
+                            onChange={(e) => {
+                              const next = [...inPersonClasses];
+                              next[idx] = { ...cls, ageRange: e.target.value };
+                              updateInPersonClasses(next);
+                            }}
+                            className="w-full py-1.5 bg-transparent border-b border-neutral-300 focus:border-naho-pink text-xs text-neutral-900 focus:outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-400 mb-1">
+                            Título
+                          </label>
+                          <input
+                            type="text"
+                            value={cls.title}
+                            onChange={(e) => {
+                              const next = [...inPersonClasses];
+                              next[idx] = { ...cls, title: e.target.value };
+                              updateInPersonClasses(next);
+                            }}
+                            className="w-full py-1.5 bg-transparent border-b border-neutral-300 focus:border-naho-pink text-xs text-neutral-900 focus:outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-400 mb-1">
+                            Horarios
+                          </label>
+                          <input
+                            type="text"
+                            value={cls.scheduleSummary}
+                            onChange={(e) => {
+                              const next = [...inPersonClasses];
+                              next[idx] = { ...cls, scheduleSummary: e.target.value };
+                              updateInPersonClasses(next);
+                            }}
+                            className="w-full py-1.5 bg-transparent border-b border-neutral-300 focus:border-naho-pink text-xs text-neutral-900 focus:outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-400 mb-1">
+                            Precio / Mensualidad
+                          </label>
+                          <input
+                            type="text"
+                            value={cls.priceInfo}
+                            onChange={(e) => {
+                              const next = [...inPersonClasses];
+                              next[idx] = { ...cls, priceInfo: e.target.value };
+                              updateInPersonClasses(next);
+                            }}
+                            className="w-full py-1.5 bg-transparent border-b border-neutral-300 focus:border-naho-pink text-xs text-neutral-900 focus:outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-400 mb-1">
+                            Técnicas (separadas por coma)
+                          </label>
+                          <input
+                            type="text"
+                            value={cls.techniques.join(', ')}
+                            onChange={(e) => {
+                              const parsed = e.target.value
+                                .split(',')
+                                .map((t) => t.trim())
+                                .filter(Boolean);
+                              const next = [...inPersonClasses];
+                              next[idx] = { ...cls, techniques: parsed };
+                              updateInPersonClasses(next);
+                            }}
+                            className="w-full py-1.5 bg-transparent border-b border-neutral-300 focus:border-naho-pink text-xs text-neutral-900 focus:outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-400 mb-1">
+                            Descripción
+                          </label>
+                          <textarea
+                            rows={3}
+                            value={cls.description}
+                            onChange={(e) => {
+                              const next = [...inPersonClasses];
+                              next[idx] = { ...cls, description: e.target.value };
+                              updateInPersonClasses(next);
+                            }}
+                            className="w-full p-2.5 bg-white border border-neutral-200 text-xs text-neutral-900 focus:outline-none"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Studio Photos Gallery */}
+                <div className="bg-white p-8 sm:p-10 shadow-[0_4px_20px_rgba(0,0,0,0.03)] space-y-6">
+                  <div>
+                    <h2 className="font-serif text-2xl text-neutral-900 font-normal">
+                      Fotografías del Taller Físico ({studioPhotos.length})
+                    </h2>
+                    <p className="text-xs text-neutral-400 mt-0.5">
+                      Muestra cómo se ve el estudio donde impartes clases en Tampico
+                    </p>
+                  </div>
+
+                  <form
+                    onSubmit={handleAddStudioPhoto}
+                    className="p-6 bg-[#F5F2EB]/60 border border-black/[0.05] grid grid-cols-1 sm:grid-cols-4 gap-4 items-end"
+                  >
+                    <div>
+                      <label className="block text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-400 mb-1.5">
+                        Título *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="Ej. Área de caballetes"
+                        value={newStudioPhoto.title}
+                        onChange={(e) =>
+                          setNewStudioPhoto((p) => ({ ...p, title: e.target.value }))
+                        }
+                        className="w-full py-2 bg-transparent border-b border-neutral-300 text-xs focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-400 mb-1.5">
+                        Descripción
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Ej. Clases vespertinas"
+                        value={newStudioPhoto.caption}
+                        onChange={(e) =>
+                          setNewStudioPhoto((p) => ({ ...p, caption: e.target.value }))
+                        }
+                        className="w-full py-2 bg-transparent border-b border-neutral-300 text-xs focus:outline-none"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-400 mb-1.5">
+                        Archivo de Imagen
+                      </label>
+                      <label className="w-full py-2.5 px-3 bg-white border border-neutral-300 text-[10px] font-semibold uppercase tracking-[0.16em] cursor-pointer flex items-center justify-center gap-1.5">
+                        <Upload className="w-3.5 h-3.5" />
+                        <span>Elegir Foto</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) =>
+                            handleImageFileUpload(e, (url) =>
+                              setNewStudioPhoto((p) => ({ ...p, image: url }))
+                            )
+                          }
+                        />
+                      </label>
+                    </div>
+                    <button
+                      type="submit"
+                      className="py-3 px-5 bg-[#181B20] hover:bg-naho-pink text-white text-[10px] font-semibold uppercase tracking-[0.18em] transition-colors cursor-pointer"
+                    >
+                      + Agregar Foto
+                    </button>
+                  </form>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                    {studioPhotos.map((p) => (
+                      <div
+                        key={p.id}
+                        className="group bg-white border border-black/[0.06] overflow-hidden flex flex-col justify-between"
+                      >
+                        <img src={p.image} alt={p.title} className="w-full h-44 object-cover" />
+                        <div className="bg-[#181B20] text-white p-4 flex items-center justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="font-serif text-sm truncate">{p.title}</p>
+                            <p className="text-[10px] text-white/50 truncate">{p.caption}</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setConfirmDialog({
+                                title: `¿Eliminar fotografía "${p.title}"?`,
+                                message: 'Se quitará esta imagen de la galería del taller físico.',
+                                confirmLabel: 'Sí, eliminar foto',
+                                onConfirm: () => {
+                                  deleteStudioPhoto(p.id);
+                                  showToast('Foto del taller eliminada.');
+                                },
+                              });
+                            }}
+                            className="p-1.5 text-white/50 hover:text-rose-400 cursor-pointer"
+                            title="Eliminar foto del taller"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
 
-              {/* Taller Físico Mockup Card */}
-              <div className="bg-white rounded-3xl p-6 border border-black/[0.06] shadow-md space-y-4">
-                <div className="flex items-center justify-between border-b border-black/[0.05] pb-3">
-                  <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-neutral-900">
-                    <Store className="w-4 h-4 text-naho-pink" />
-                    <span>{siteConfig.studioName || 'Nahocraft Centro de Arte'}</span>
-                  </div>
-                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
-                    Taller Abierto
+              {/* Right Column: Sticky Live Visual Mockup (5 cols) */}
+              <div className="xl:col-span-5 xl:sticky xl:top-28 space-y-6">
+                <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-500 px-1">
+                  <span className="flex items-center gap-1.5 text-naho-pink">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    Vista Previa de la Portada en Vivo
                   </span>
+                  <span className="text-[10px] text-neutral-400">Hero Section</span>
                 </div>
 
-                <div className="space-y-3 text-xs">
-                  <div className="flex items-start gap-2.5 text-neutral-700">
-                    <MapPin className="w-4 h-4 text-naho-pink shrink-0 mt-0.5" />
-                    <span className="leading-snug">
-                      {siteConfig.studioAddress || 'Avenida Ayuntamiento 3 - 109, Minerva, Tampico'}
+                {/* Hero Mockup Card */}
+                <div className="bg-[#FAF7F2] rounded-3xl p-6 sm:p-7 border border-black/[0.06] shadow-xl space-y-5 overflow-hidden relative">
+                  <div className="absolute top-0 right-0 w-48 h-48 bg-naho-yellow/15 rounded-full blur-3xl pointer-events-none" />
+                  <div className="absolute bottom-0 left-0 w-48 h-48 bg-naho-pink/10 rounded-full blur-3xl pointer-events-none" />
+
+                  {/* Badge */}
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-black/[0.04] text-neutral-700 border border-black/[0.06]">
+                    <span className="w-1.5 h-1.5 rounded-full bg-naho-pink animate-ping" />
+                    {siteConfig.heroBadge || 'Centro de Arte & Muralismo • Tampico'}
+                  </div>
+
+                  {/* Title Preview */}
+                  <div className="space-y-1">
+                    <h1 className="text-xl sm:text-2xl font-black text-neutral-900 tracking-tight leading-tight">
+                      {siteConfig.heroTitleLine1 || 'Cursos de arte en vivo y'}{' '}
+                      <span className="text-transparent bg-clip-text bg-gradient-to-r from-naho-pink via-naho-orange to-naho-yellow">
+                        {siteConfig.heroTitleHighlight || 'murales que transforman espacios.'}
+                      </span>
+                    </h1>
+                  </div>
+
+                  {/* Description Preview */}
+                  <p className="text-xs sm:text-sm text-neutral-600 leading-relaxed line-clamp-3">
+                    {siteConfig.heroDescription ||
+                      'Inscríbete a nuestros cursos mensuales con cupo limitado o cotiza un mural personalizado en Tampico, Ciudad Madero y Altamira.'}
+                  </p>
+
+                  {/* Mock CTA Buttons */}
+                  <div className="flex items-center gap-2.5 pt-1">
+                    <div className="px-4 py-2 rounded-full bg-neutral-950 text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm">
+                      <span>Ver Cursos</span>
+                      <ArrowUpRight className="w-3 h-3 text-neutral-300" />
+                    </div>
+                    <div className="px-4 py-2 rounded-full bg-white text-neutral-800 text-xs font-semibold border border-black/10 shadow-2xs">
+                      Cotizar Mural
+                    </div>
+                  </div>
+
+                  {/* Floating Mini Mural Card */}
+                  <div className="p-3 bg-white rounded-2xl border border-black/[0.05] shadow-sm flex items-center gap-3">
+                    <img
+                      src={localAssets.murales.dulceria}
+                      alt="Mural Preview"
+                      className="w-14 h-12 rounded-lg object-cover border border-black/5"
+                    />
+                    <div>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-naho-pink block">
+                        Muralismo a Medida
+                      </span>
+                      <p className="text-xs font-bold text-neutral-900">
+                        Tampico, Cd. Madero & Altamira
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Taller Físico Mockup Card */}
+                <div className="bg-white rounded-3xl p-6 border border-black/[0.06] shadow-md space-y-4">
+                  <div className="flex items-center justify-between border-b border-black/[0.05] pb-3">
+                    <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-neutral-900">
+                      <Store className="w-4 h-4 text-naho-pink" />
+                      <span>{siteConfig.studioName || 'Nahocraft Centro de Arte'}</span>
+                    </div>
+                    <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                      Horarios Activos
                     </span>
                   </div>
-                  <div className="flex items-center gap-2.5 text-neutral-700">
-                    <MessageCircle className="w-4 h-4 text-[#25D366] shrink-0" />
-                    <span className="font-mono">{siteConfig.studioPhone || '+52 833 365 5622'}</span>
-                  </div>
-                  <div className="flex items-center gap-2.5 text-neutral-700">
-                    <Mail className="w-4 h-4 text-naho-blue shrink-0" />
-                    <span className="font-mono text-neutral-500">{siteConfig.adminEmail}</span>
+
+                  <div className="space-y-3 text-xs">
+                    <div className="flex items-start gap-2.5 text-neutral-700">
+                      <MapPin className="w-4 h-4 text-naho-pink shrink-0 mt-0.5" />
+                      <span className="leading-snug">
+                        {siteConfig.studioAddress || 'Avenida Ayuntamiento 3 - 109, Minerva, Tampico'}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2.5 text-neutral-700">
+                      <MessageCircle className="w-4 h-4 text-[#25D366] shrink-0" />
+                      <span className="font-mono">{siteConfig.studioPhone || '+52 833 365 5622'}</span>
+                    </div>
+                    <div className="flex items-center gap-2.5 text-neutral-700">
+                      <Mail className="w-4 h-4 text-naho-blue shrink-0" />
+                      <span className="font-mono text-neutral-500">{siteConfig.adminEmail}</span>
+                    </div>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
 
-          <div className="flex justify-end pt-4 border-t border-black/[0.05]">
-            <button
-              type="button"
-              onClick={() => {
-                resetAllDataToDefaults();
-                showToast('Datos restaurados a los valores por defecto.');
-              }}
-              className="px-5 py-2.5 border border-neutral-300 hover:border-neutral-900 text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-600 inline-flex items-center gap-2 cursor-pointer transition-colors"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>Restaurar valores iniciales</span>
-            </button>
+            <div className="flex justify-end pt-4 border-t border-black/[0.05]">
+              <button
+                type="button"
+                onClick={() => {
+                  setConfirmDialog({
+                    title: '¿Restaurar todos los datos a los valores iniciales?',
+                    message:
+                      'Se restablecerán los murales, cursos, textos y horarios originales de fábrica. Cualquier cambio o registro guardado en este navegador se reemplazará.',
+                    confirmLabel: 'Sí, restaurar valores de fábrica',
+                    onConfirm: () => {
+                      resetAllDataToDefaults();
+                      showToast('Datos restaurados a los valores por defecto.');
+                    },
+                  });
+                }}
+                className="px-5 py-2.5 border border-neutral-300 hover:border-rose-600 hover:text-rose-600 text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-600 inline-flex items-center gap-2 cursor-pointer transition-colors"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Restaurar valores iniciales</span>
+              </button>
+            </div>
           </div>
-        </div>
-      )}
+        )}
       </main>
 
       {/* ============================================================
-          MODAL 1: NUEVA CATEGORÍA DE MURAL
+          MODAL 1: NUEVA / EDITAR CATEGORÍA DE MURAL (#10)
          ============================================================ */}
       {showCategoryModal && (
         <div
@@ -2490,7 +3335,9 @@ export function NahoGestionDashboard() {
         >
           <div className="w-full max-w-md bg-white shadow-2xl overflow-hidden">
             <div className="bg-[#181B20] text-white px-6 py-4 flex items-center justify-between">
-              <h3 className="font-serif text-lg">Nueva Categoría de Mural</h3>
+              <h3 className="font-serif text-lg">
+                {editingCategoryId ? 'Editar Categoría de Mural' : 'Nueva Categoría de Mural'}
+              </h3>
               <button
                 type="button"
                 onClick={() => setShowCategoryModal(false)}
@@ -2540,7 +3387,7 @@ export function NahoGestionDashboard() {
                   type="submit"
                   className="px-6 py-2.5 bg-[#181B20] hover:bg-naho-pink text-white text-[10px] font-semibold uppercase tracking-[0.18em] transition-colors cursor-pointer"
                 >
-                  Crear Categoría
+                  {editingCategoryId ? 'Guardar Cambios' : 'Crear Categoría'}
                 </button>
               </div>
             </form>
@@ -2549,7 +3396,7 @@ export function NahoGestionDashboard() {
       )}
 
       {/* ============================================================
-          MODAL 2: AGREGAR / EDITAR MURAL
+          MODAL 2: AGREGAR / EDITAR MURAL (#10 & #15)
          ============================================================ */}
       {showMuralModal && (
         <div
@@ -2558,10 +3405,10 @@ export function NahoGestionDashboard() {
             if (e.target === e.currentTarget) setShowMuralModal(false);
           }}
         >
-          <div className="w-full max-w-lg bg-white shadow-2xl overflow-hidden max-h-[92vh] flex flex-col">
+          <div className="w-full max-w-2xl bg-white shadow-2xl overflow-hidden max-h-[92vh] flex flex-col">
             <div className="bg-[#181B20] text-white px-6 py-4 flex items-center justify-between shrink-0">
               <h3 className="font-serif text-lg">
-                {editingMuralId ? 'Editar Mural' : 'Agregar Nuevo Mural'}
+                {editingMuralId ? 'Editar Mural y Galería de Proceso' : 'Agregar Nuevo Mural'}
               </h3>
               <button
                 type="button"
@@ -2618,16 +3465,59 @@ export function NahoGestionDashboard() {
                 </div>
               </div>
 
-              <div>
-                <label className="block text-[10px] font-semibold uppercase tracking-[0.2em] text-neutral-400 mb-2">
-                  Ubicación (Tampico, Cd. Madero o Altamira)
-                </label>
-                <input
-                  type="text"
-                  value={muralForm.location}
-                  onChange={(e) => setMuralForm((p) => ({ ...p, location: e.target.value }))}
-                  className="w-full py-2.5 border-b border-neutral-300 focus:border-naho-pink text-sm focus:outline-none"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                <div>
+                  <label className="block text-[10px] font-semibold uppercase tracking-[0.2em] text-neutral-400 mb-2">
+                    Ubicación (Tampico, Cd. Madero o Altamira)
+                  </label>
+                  <input
+                    type="text"
+                    value={muralForm.location}
+                    onChange={(e) => setMuralForm((p) => ({ ...p, location: e.target.value }))}
+                    className="w-full py-2.5 border-b border-neutral-300 focus:border-naho-pink text-sm focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-semibold uppercase tracking-[0.2em] text-neutral-400 mb-2">
+                    Técnica Utilizada (#10)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ej. Acrílico profesional y sellador UV"
+                    value={muralForm.technique}
+                    onChange={(e) => setMuralForm((p) => ({ ...p, technique: e.target.value }))}
+                    className="w-full py-2.5 border-b border-neutral-300 focus:border-naho-pink text-sm focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                <div>
+                  <label className="block text-[10px] font-semibold uppercase tracking-[0.2em] text-neutral-400 mb-2">
+                    Insignia Curatorial (Sello de la Obra)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ej. Obra Destacada • Tampico"
+                    value={muralForm.curatedTag}
+                    onChange={(e) => setMuralForm((p) => ({ ...p, curatedTag: e.target.value }))}
+                    className="w-full py-2.5 border-b border-neutral-300 focus:border-naho-pink text-sm focus:outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-semibold uppercase tracking-[0.2em] text-neutral-400 mb-2">
+                    Etiquetas / Tags (separadas por coma)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ej. Comercial, Tampico, Pintado a Mano"
+                    value={muralForm.tagsText}
+                    onChange={(e) => setMuralForm((p) => ({ ...p, tagsText: e.target.value }))}
+                    className="w-full py-2.5 border-b border-neutral-300 focus:border-naho-pink text-sm focus:outline-none"
+                  />
+                </div>
               </div>
 
               <div>
@@ -2645,7 +3535,7 @@ export function NahoGestionDashboard() {
 
               <div>
                 <label className="block text-[10px] font-semibold uppercase tracking-[0.2em] text-neutral-400 mb-2">
-                  Fotografía del Mural
+                  Fotografía Principal (Resultado Final)
                 </label>
                 <div className="flex items-center gap-4">
                   <img
@@ -2655,7 +3545,7 @@ export function NahoGestionDashboard() {
                   />
                   <label className="px-4 py-2.5 bg-[#F5F2EB] hover:bg-neutral-200 text-[10px] font-semibold uppercase tracking-[0.18em] cursor-pointer inline-flex items-center gap-2">
                     <Upload className="w-3.5 h-3.5" />
-                    <span>Seleccionar Imagen</span>
+                    <span>Seleccionar Portada</span>
                     <input
                       type="file"
                       accept="image/*"
@@ -2668,6 +3558,99 @@ export function NahoGestionDashboard() {
                     />
                   </label>
                 </div>
+              </div>
+
+              {/* Multi-photo Gallery Manager (#15: Antes / Proceso / Detalle) */}
+              <div className="p-4 bg-[#F5F2EB]/60 border border-black/[0.06] space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-neutral-700 flex items-center gap-1.5">
+                    <Images className="w-3.5 h-3.5 text-naho-pink" />
+                    Galería Adicional (Antes / Proceso / Detalles)
+                  </span>
+                  <span className="text-[10px] text-neutral-400 font-mono">
+                    {muralForm.galleryImages.length} fotos extra
+                  </span>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    value={newGallerySlideLabel}
+                    onChange={(e) => setNewGallerySlideLabel(e.target.value)}
+                    className="py-2 px-3 bg-white border border-neutral-300 text-xs text-neutral-800 focus:outline-none"
+                  >
+                    <option value="Antes del Mural">Antes del Mural</option>
+                    <option value="Proceso / Boceto">Proceso / Boceto</option>
+                    <option value="Detalle de Textura">Detalle de Textura</option>
+                    <option value="Vista Panorámica">Vista Panorámica</option>
+                  </select>
+
+                  <label className="px-3.5 py-2 bg-[#181B20] hover:bg-naho-pink text-white text-[10px] font-semibold uppercase tracking-[0.16em] cursor-pointer inline-flex items-center gap-1.5 transition-colors">
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>Subir Foto de {newGallerySlideLabel}</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={(e) =>
+                        handleImageFileUpload(e, (url) => {
+                          setMuralForm((p) => ({
+                            ...p,
+                            galleryImages: [
+                              ...p.galleryImages,
+                              {
+                                id: `slide-${Date.now()}`,
+                                url,
+                                label: newGallerySlideLabel,
+                              },
+                            ],
+                          }));
+                        })
+                      }
+                    />
+                  </label>
+                </div>
+
+                {muralForm.galleryImages.length > 0 && (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 pt-2">
+                    {muralForm.galleryImages.map((gImg, idx) => (
+                      <div
+                        key={`${gImg.label}-${idx}`}
+                        className="bg-white border border-black/10 p-2 space-y-1.5 relative group"
+                      >
+                        <img
+                          src={gImg.url}
+                          alt={gImg.label}
+                          className="w-full h-20 object-cover"
+                        />
+                        <div className="flex items-center justify-between gap-1">
+                          <input
+                            type="text"
+                            value={gImg.label}
+                            onChange={(e) => {
+                              const next = [...muralForm.galleryImages];
+                              next[idx] = { ...gImg, label: e.target.value };
+                              setMuralForm((p) => ({ ...p, galleryImages: next }));
+                            }}
+                            className="w-full text-[10px] font-semibold text-neutral-800 border-b border-transparent focus:border-naho-pink focus:outline-none truncate"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setMuralForm((p) => ({
+                                ...p,
+                                galleryImages: p.galleryImages.filter((_, i) => i !== idx),
+                              }));
+                            }}
+                            className="text-neutral-400 hover:text-rose-600 p-0.5 cursor-pointer"
+                            title="Quitar foto"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="flex justify-end gap-3 pt-4 border-t border-black/[0.06]">
@@ -2691,7 +3674,7 @@ export function NahoGestionDashboard() {
       )}
 
       {/* ============================================================
-          MODAL 3: AGREGAR / EDITAR CURSO Y LINK DE CLASE
+          MODAL 3: AGREGAR / EDITAR CURSO Y LINK DE CLASE (#2 & #3)
          ============================================================ */}
       {showCourseModal && (
         <div
@@ -2712,7 +3695,7 @@ export function NahoGestionDashboard() {
                     {editingCourseId ? 'Editar Curso y Sala Virtual' : 'Crear Nuevo Curso del Mes'}
                   </h3>
                   <p className="text-[10px] text-white/50 tracking-wider uppercase font-semibold">
-                    Configuración de fecha, horario, Meet y vista previa en vivo
+                    Configuración de modalidad, fecha, horario, Meet y vista previa en vivo
                   </p>
                 </div>
               </div>
@@ -2755,6 +3738,64 @@ export function NahoGestionDashboard() {
                       onChange={(e) => setCourseForm((p) => ({ ...p, subtitle: e.target.value }))}
                       className="w-full py-2 border-b border-neutral-300 focus:border-naho-pink text-xs text-neutral-600 focus:outline-none"
                     />
+                  </div>
+
+                  {/* Modality, Platform & Level (#2) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-4 bg-[#F5F2EB]/70 border border-black/[0.05] rounded-xl">
+                    <div>
+                      <label className="block text-[9px] font-semibold uppercase tracking-[0.16em] text-neutral-500 mb-1">
+                        Modalidad (#2)
+                      </label>
+                      <select
+                        value={courseForm.modality}
+                        onChange={(e) => {
+                          const newMod = e.target.value as CourseItem['modality'];
+                          const suggestedPlatform =
+                            newMod === 'presencial'
+                              ? 'Taller Físico Tampico (Col. Minerva)'
+                              : newMod === 'hibrido'
+                              ? 'Taller Tampico + Google Meet en Vivo'
+                              : 'Google Meet (En Vivo)';
+                          setCourseForm((p) => ({
+                            ...p,
+                            modality: newMod,
+                            platformName: suggestedPlatform,
+                          }));
+                        }}
+                        className="w-full py-1.5 px-2 bg-white border border-neutral-300 rounded text-xs text-neutral-800 focus:outline-none focus:border-naho-pink font-semibold"
+                      >
+                        <option value="online">Online en Vivo</option>
+                        <option value="presencial">Presencial en Taller</option>
+                        <option value="hibrido">Híbrido (Taller + Meet)</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[9px] font-semibold uppercase tracking-[0.16em] text-neutral-500 mb-1">
+                        Plataforma / Sede
+                      </label>
+                      <input
+                        type="text"
+                        value={courseForm.platformName}
+                        onChange={(e) =>
+                          setCourseForm((p) => ({ ...p, platformName: e.target.value }))
+                        }
+                        className="w-full py-1.5 px-2 bg-white border border-neutral-300 rounded text-xs text-neutral-800 focus:outline-none focus:border-naho-pink"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[9px] font-semibold uppercase tracking-[0.16em] text-neutral-500 mb-1">
+                        Nivel Requerido
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Ej. Principiantes / Todos los niveles"
+                        value={courseForm.level}
+                        onChange={(e) => setCourseForm((p) => ({ ...p, level: e.target.value }))}
+                        className="w-full py-1.5 px-2 bg-white border border-neutral-300 rounded text-xs text-neutral-800 focus:outline-none focus:border-naho-pink"
+                      />
+                    </div>
                   </div>
 
                   {/* Section 1: Month and Date Selection */}
@@ -2857,7 +3898,7 @@ export function NahoGestionDashboard() {
                     <div className="flex items-center justify-between">
                       <span className="text-[10px] font-bold uppercase tracking-[0.18em] text-neutral-700 flex items-center gap-1.5">
                         <Clock className="w-3.5 h-3.5 text-naho-blue" />
-                        Horario de la Sesión en Vivo
+                        Horario de la Sesión
                       </span>
                       <span className="text-[11px] font-mono font-bold text-neutral-800">
                         {courseForm.eventTimeDisplay}
@@ -2944,10 +3985,10 @@ export function NahoGestionDashboard() {
                         </div>
                         <div>
                           <span className="text-[11px] font-bold text-neutral-900 block leading-tight">
-                            Sala Virtual Google Meet
+                            Enlace de Acceso / Sala Virtual Google Meet
                           </span>
                           <span className="text-[9px] text-emerald-700 font-semibold">
-                            Se enviará automáticamente al correo de cada alumno
+                            Se enviará automáticamente en el pase digital de cada alumno
                           </span>
                         </div>
                       </div>
@@ -3089,20 +4130,37 @@ export function NahoGestionDashboard() {
                     </div>
                   </div>
 
-                  {/* Description & Includes */}
-                  <div>
-                    <label className="block text-[10px] font-semibold uppercase tracking-[0.2em] text-neutral-400 mb-1">
-                      Descripción del Taller
-                    </label>
-                    <textarea
-                      rows={2}
-                      value={courseForm.description}
-                      onChange={(e) =>
-                        setCourseForm((p) => ({ ...p, description: e.target.value }))
-                      }
-                      placeholder="Explica qué aprenderá el alumno y de qué trata la clase..."
-                      className="w-full p-2.5 bg-[#F5F2EB]/50 border border-neutral-200 text-xs text-neutral-800 rounded focus:outline-none focus:border-naho-pink"
-                    />
+                  {/* Description & Includes (#3) */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-[10px] font-semibold uppercase tracking-[0.2em] text-neutral-400 mb-1">
+                        Descripción del Taller
+                      </label>
+                      <textarea
+                        rows={3}
+                        value={courseForm.description}
+                        onChange={(e) =>
+                          setCourseForm((p) => ({ ...p, description: e.target.value }))
+                        }
+                        placeholder="Explica qué aprenderá el alumno y de qué trata la clase..."
+                        className="w-full p-2.5 bg-[#F5F2EB]/50 border border-neutral-200 text-xs text-neutral-800 rounded focus:outline-none focus:border-naho-pink"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] font-semibold uppercase tracking-[0.2em] text-neutral-400 mb-1">
+                        ¿Qué incluye el boleto? (1 por línea)
+                      </label>
+                      <textarea
+                        rows={3}
+                        value={courseForm.includesText}
+                        onChange={(e) =>
+                          setCourseForm((p) => ({ ...p, includesText: e.target.value }))
+                        }
+                        placeholder="Acceso en vivo por Google Meet&#10;Lista de materiales PDF&#10;Constancia de participación"
+                        className="w-full p-2.5 bg-[#F5F2EB]/50 border border-neutral-200 text-xs text-neutral-800 rounded focus:outline-none focus:border-naho-pink"
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -3126,7 +4184,13 @@ export function NahoGestionDashboard() {
                       />
                       <div className="absolute top-2.5 left-2.5 px-2.5 py-1 rounded-full bg-neutral-950/80 backdrop-blur-md text-[10px] font-bold text-white flex items-center gap-1.5">
                         <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-                        <span>Google Meet en Vivo</span>
+                        <span>
+                          {courseForm.modality === 'presencial'
+                            ? 'Presencial en Taller'
+                            : courseForm.modality === 'hibrido'
+                            ? 'Híbrido (Taller + Meet)'
+                            : 'Online en Vivo'}
+                        </span>
                       </div>
                       <div className="absolute top-2.5 right-2.5 px-2.5 py-1 rounded-full bg-white/90 backdrop-blur-md text-[10px] font-bold text-neutral-900 shadow-xs">
                         {courseForm.monthLabel || 'Octubre 2026'}
@@ -3179,34 +4243,52 @@ export function NahoGestionDashboard() {
                     </div>
                   </div>
 
-                  {/* Change Cover & Featured Checkbox */}
-                  <div className="bg-[#F5F2EB]/60 p-3.5 rounded-xl border border-black/5 flex items-center justify-between gap-3">
-                    <label className="px-3 py-1.5 bg-white hover:bg-neutral-100 border border-neutral-300 rounded text-[10px] font-semibold uppercase tracking-wider cursor-pointer inline-flex items-center gap-1.5 transition-colors">
-                      <Upload className="w-3.5 h-3.5 text-naho-pink" />
-                      <span>Cambiar Portada</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        className="hidden"
-                        onChange={(e) =>
-                          handleImageFileUpload(e, (url) =>
-                            setCourseForm((p) => ({ ...p, image: url }))
-                          )
-                        }
-                      />
-                    </label>
+                  {/* Change Cover & Visibility / Featured Checkboxes (#3) */}
+                  <div className="bg-[#F5F2EB]/60 p-3.5 rounded-xl border border-black/5 space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <label className="px-3 py-1.5 bg-white hover:bg-neutral-100 border border-neutral-300 rounded text-[10px] font-semibold uppercase tracking-wider cursor-pointer inline-flex items-center gap-1.5 transition-colors">
+                        <Upload className="w-3.5 h-3.5 text-naho-pink" />
+                        <span>Cambiar Portada</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) =>
+                            handleImageFileUpload(e, (url) =>
+                              setCourseForm((p) => ({ ...p, image: url }))
+                            )
+                          }
+                        />
+                      </label>
 
-                    <label className="flex items-center gap-2 text-xs text-neutral-700 cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={courseForm.featured}
-                        onChange={(e) =>
-                          setCourseForm((p) => ({ ...p, featured: e.target.checked }))
-                        }
-                        className="accent-naho-pink w-4 h-4 rounded"
-                      />
-                      <span className="font-medium text-[11px]">Destacar en portada</span>
-                    </label>
+                      <label className="flex items-center gap-2 text-xs text-neutral-700 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={courseForm.featured}
+                          onChange={(e) =>
+                            setCourseForm((p) => ({ ...p, featured: e.target.checked }))
+                          }
+                          className="accent-naho-pink w-4 h-4 rounded"
+                        />
+                        <span className="font-medium text-[11px]">Destacar en portada</span>
+                      </label>
+                    </div>
+
+                    <div className="pt-2.5 border-t border-black/[0.06] flex items-center justify-between">
+                      <label className="flex items-center gap-2 text-xs text-neutral-800 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={courseForm.active}
+                          onChange={(e) =>
+                            setCourseForm((p) => ({ ...p, active: e.target.checked }))
+                          }
+                          className="accent-emerald-600 w-4 h-4 rounded"
+                        />
+                        <span className="font-semibold text-[11px]">
+                          Curso visible al público (Desmarcar para guardar como borrador)
+                        </span>
+                      </label>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -3233,6 +4315,68 @@ export function NahoGestionDashboard() {
                 </div>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================
+          MODAL 4: CONFIRMACIÓN ANTES DE BORRAR (#11)
+         ============================================================ */}
+      {confirmDialog && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="confirm-dialog-title"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setConfirmDialog(null);
+          }}
+        >
+          <div className="w-full max-w-md bg-white shadow-2xl border border-black/10 overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="bg-[#181B20] text-white px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-2.5">
+                <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                <h3 id="confirm-dialog-title" className="font-serif text-base">
+                  Confirmar Acción
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setConfirmDialog(null)}
+                className="text-white/60 hover:text-white cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-4">
+              <h4 className="font-serif text-lg text-neutral-900 font-bold">
+                {confirmDialog.title}
+              </h4>
+              <p className="text-xs text-neutral-600 leading-relaxed">
+                {confirmDialog.message}
+              </p>
+
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-black/[0.06]">
+                <button
+                  type="button"
+                  onClick={() => setConfirmDialog(null)}
+                  className="px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-neutral-600 hover:text-neutral-900 cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    confirmDialog.onConfirm();
+                    setConfirmDialog(null);
+                  }}
+                  className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-semibold uppercase tracking-[0.18em] transition-colors cursor-pointer shadow-xs"
+                >
+                  {confirmDialog.confirmLabel}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

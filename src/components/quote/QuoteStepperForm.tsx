@@ -1,4 +1,4 @@
-import { useState, useId } from 'react';
+import React, { useState, useId } from 'react';
 import {
   QuoteFormData,
   MuralCityZone,
@@ -8,6 +8,7 @@ import { useSiteData } from '../../context/SiteDataContext';
 import { LiveSummary } from './LiveSummary';
 import confetti from 'canvas-confetti';
 import { sendClientQuoteConfirmation, sendStudioQuoteNotification } from '../../emails';
+import { compressImageFile } from '../../utils/imageCompressor';
 import {
   Palette,
   Building2,
@@ -104,7 +105,7 @@ export function QuoteStepperForm({
     { city: 'Altamira', desc: 'Zona Centro, Residenciales, Corredor Urbano e Industrial' },
   ];
 
-  const processImageFile = (file: File) => {
+  const processImageFile = async (file: File) => {
     if (!file.type.startsWith('image/')) {
       alert('Por favor selecciona un archivo de imagen válido (JPG, PNG, WEBP).');
       return;
@@ -114,16 +115,16 @@ export function QuoteStepperForm({
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const result = event.target?.result as string;
+    try {
+      const compressedDataUrl = await compressImageFile(file, 1200, 0.8);
       setFormData((prev) => ({
         ...prev,
-        referenceImagePreview: result,
+        referenceImagePreview: compressedDataUrl,
         referenceImageName: file.name,
       }));
-    };
-    reader.readAsDataURL(file);
+    } catch {
+      alert('No se pudo procesar la imagen seleccionada.');
+    }
   };
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -201,9 +202,8 @@ export function QuoteStepperForm({
     if (!isFormComplete) return;
 
     const folioNumber = Math.floor(100 + Math.random() * 900);
-    const formattedLoc = `${formData.cityZone}${
-      formData.neighborhoodOrAddress ? ` • ${formData.neighborhoodOrAddress}` : ', Tamps.'
-    }`;
+    const formattedLoc = `${formData.cityZone}${formData.neighborhoodOrAddress ? ` • ${formData.neighborhoodOrAddress}` : ', Tamps.'
+      }`;
     const resolvedCategory =
       formData.muralCategory === 'Otro tipo de mural' && formData.customMuralType?.trim()
         ? `Otro: ${formData.customMuralType.trim()}`
@@ -336,24 +336,22 @@ export function QuoteStepperForm({
                       ? `Ir al paso ${s.step}: ${s.label}`
                       : 'Completa los campos obligatorios del paso actual antes de avanzar'
                   }
-                  className={`py-2.5 px-2 rounded-full flex items-center justify-center gap-2 transition-all duration-300 text-xs font-semibold select-none ${
-                    isCurrent
-                      ? 'bg-white text-neutral-950 shadow-[0_4px_16px_rgba(0,0,0,0.08)] scale-[1.01] cursor-pointer'
-                      : isPassed
+                  className={`py-2.5 px-2 rounded-full flex items-center justify-center gap-2 transition-all duration-300 text-xs font-semibold select-none ${isCurrent
+                    ? 'bg-white text-neutral-950 shadow-[0_4px_16px_rgba(0,0,0,0.08)] scale-[1.01] cursor-pointer'
+                    : isPassed
                       ? 'text-neutral-900 hover:bg-black/[0.03] cursor-pointer'
                       : isAllowed
-                      ? 'text-neutral-600 hover:text-neutral-900 cursor-pointer'
-                      : 'text-neutral-400/70 opacity-60 cursor-not-allowed'
-                  }`}
+                        ? 'text-neutral-600 hover:text-neutral-900 cursor-pointer'
+                        : 'text-neutral-400/70 opacity-60 cursor-not-allowed'
+                    }`}
                 >
                   <div
-                    className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold transition-transform duration-200 ${
-                      isCurrent
-                        ? 'bg-neutral-950 text-white scale-110'
-                        : isPassed
+                    className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold transition-transform duration-200 ${isCurrent
+                      ? 'bg-neutral-950 text-white scale-110'
+                      : isPassed
                         ? 'bg-emerald-500 text-white'
                         : 'bg-black/[0.06] text-neutral-400'
-                    }`}
+                      }`}
                   >
                     {isPassed ? (
                       <CheckCircle className="w-3 h-3" />
@@ -407,24 +405,21 @@ export function QuoteStepperForm({
                             muralCategory: cat.label,
                           }))
                         }
-                        className={`p-5 rounded-3xl text-left transition-all duration-300 flex flex-col justify-between gap-4 cursor-pointer active:scale-[0.98] ${
-                          isSelected
-                            ? 'border-2 border-neutral-950 bg-neutral-950 text-white shadow-lg'
-                            : 'border border-black/[0.08] bg-white hover:border-black/25 text-neutral-900'
-                        }`}
+                        className={`p-5 rounded-3xl text-left transition-all duration-300 flex flex-col justify-between gap-4 cursor-pointer active:scale-[0.98] ${isSelected
+                          ? 'border-2 border-neutral-950 bg-neutral-950 text-white shadow-lg'
+                          : 'border border-black/[0.08] bg-white hover:border-black/25 text-neutral-900'
+                          }`}
                       >
                         <div className="flex items-center justify-between">
                           <div
-                            className={`p-2.5 rounded-2xl ${
-                              isSelected ? 'bg-white/15 text-white' : 'bg-naho-pink/10 text-naho-pink'
-                            }`}
+                            className={`p-2.5 rounded-2xl ${isSelected ? 'bg-white/15 text-white' : 'bg-naho-pink/10 text-naho-pink'
+                              }`}
                           >
                             <Icon className="w-5 h-5" />
                           </div>
                           <div
-                            className={`w-5 h-5 rounded-full border flex items-center justify-center ${
-                              isSelected ? 'border-white bg-white' : 'border-black/20'
-                            }`}
+                            className={`w-5 h-5 rounded-full border flex items-center justify-center ${isSelected ? 'border-white bg-white' : 'border-black/20'
+                              }`}
                           >
                             {isSelected && <span className="w-2 h-2 rounded-full bg-neutral-950" />}
                           </div>
@@ -433,9 +428,8 @@ export function QuoteStepperForm({
                         <div>
                           <h4 className="font-extrabold text-base tracking-tight">{cat.label}</h4>
                           <p
-                            className={`text-xs mt-1 leading-relaxed ${
-                              isSelected ? 'text-neutral-300' : 'text-neutral-500'
-                            }`}
+                            className={`text-xs mt-1 leading-relaxed ${isSelected ? 'text-neutral-300' : 'text-neutral-500'
+                              }`}
                           >
                             {cat.description || 'Mural personalizado pintado 100% a mano.'}
                           </p>
@@ -453,26 +447,23 @@ export function QuoteStepperForm({
                         muralCategory: 'Otro tipo de mural',
                       }))
                     }
-                    className={`p-5 rounded-3xl text-left transition-all duration-300 flex flex-col justify-between gap-4 cursor-pointer active:scale-[0.98] ${
-                      isOtherCategorySelected
-                        ? 'border-2 border-neutral-950 bg-neutral-950 text-white shadow-lg'
-                        : 'border border-black/[0.08] bg-white hover:border-black/25 text-neutral-900'
-                    }`}
+                    className={`p-5 rounded-3xl text-left transition-all duration-300 flex flex-col justify-between gap-4 cursor-pointer active:scale-[0.98] ${isOtherCategorySelected
+                      ? 'border-2 border-neutral-950 bg-neutral-950 text-white shadow-lg'
+                      : 'border border-black/[0.08] bg-white hover:border-black/25 text-neutral-900'
+                      }`}
                   >
                     <div className="flex items-center justify-between">
                       <div
-                        className={`p-2.5 rounded-2xl ${
-                          isOtherCategorySelected
-                            ? 'bg-white/15 text-white'
-                            : 'bg-naho-purple/15 text-naho-purple'
-                        }`}
+                        className={`p-2.5 rounded-2xl ${isOtherCategorySelected
+                          ? 'bg-white/15 text-white'
+                          : 'bg-naho-purple/15 text-naho-purple'
+                          }`}
                       >
                         <PlusCircle className="w-5 h-5" />
                       </div>
                       <div
-                        className={`w-5 h-5 rounded-full border flex items-center justify-center ${
-                          isOtherCategorySelected ? 'border-white bg-white' : 'border-black/20'
-                        }`}
+                        className={`w-5 h-5 rounded-full border flex items-center justify-center ${isOtherCategorySelected ? 'border-white bg-white' : 'border-black/20'
+                          }`}
                       >
                         {isOtherCategorySelected && (
                           <span className="w-2 h-2 rounded-full bg-neutral-950" />
@@ -485,9 +476,8 @@ export function QuoteStepperForm({
                         Otro tipo de mural
                       </h4>
                       <p
-                        className={`text-xs mt-1 leading-relaxed ${
-                          isOtherCategorySelected ? 'text-neutral-300' : 'text-neutral-500'
-                        }`}
+                        className={`text-xs mt-1 leading-relaxed ${isOtherCategorySelected ? 'text-neutral-300' : 'text-neutral-500'
+                          }`}
                       >
                         ¿Tienes una idea o proyecto distinto que no aparece en las opciones? Especifícalo aquí.
                       </p>
@@ -547,20 +537,18 @@ export function QuoteStepperForm({
                               cityZone: item.city,
                             }))
                           }
-                          className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer ${
-                            isCitySelected
-                              ? 'border-neutral-950 bg-neutral-950 text-white shadow-sm'
-                              : 'border-black/[0.08] bg-white hover:bg-neutral-100 text-neutral-800'
-                          }`}
+                          className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer ${isCitySelected
+                            ? 'border-neutral-950 bg-neutral-950 text-white shadow-sm'
+                            : 'border-black/[0.08] bg-white hover:bg-neutral-100 text-neutral-800'
+                            }`}
                         >
                           <div className="flex items-center justify-between mb-1">
                             <span className="font-extrabold text-xs">{item.city}</span>
                             {isCitySelected && <CheckCircle className="w-3.5 h-3.5 text-naho-pink" />}
                           </div>
                           <span
-                            className={`text-[10px] block leading-snug ${
-                              isCitySelected ? 'text-neutral-300' : 'text-neutral-500'
-                            }`}
+                            className={`text-[10px] block leading-snug ${isCitySelected ? 'text-neutral-300' : 'text-neutral-500'
+                              }`}
                           >
                             {item.desc}
                           </span>
@@ -619,17 +607,15 @@ export function QuoteStepperForm({
                             surfaceOrMaterial: preset.surface,
                           }))
                         }
-                        className={`p-4 rounded-2xl border transition-all cursor-pointer flex items-center justify-between ${
-                          isSelected
-                            ? 'border-neutral-950 bg-neutral-950 text-white shadow-md'
-                            : 'border-black/[0.08] bg-white hover:bg-neutral-50 text-neutral-900'
-                        }`}
+                        className={`p-4 rounded-2xl border transition-all cursor-pointer flex items-center justify-between ${isSelected
+                          ? 'border-neutral-950 bg-neutral-950 text-white shadow-md'
+                          : 'border-black/[0.08] bg-white hover:bg-neutral-50 text-neutral-900'
+                          }`}
                       >
                         <div className="flex items-center gap-3.5">
                           <span
-                            className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${
-                              isSelected ? 'border-white bg-white' : 'border-neutral-300'
-                            }`}
+                            className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 ${isSelected ? 'border-white bg-white' : 'border-neutral-300'
+                              }`}
                           >
                             {isSelected && <span className="w-1.5 h-1.5 rounded-full bg-neutral-950" />}
                           </span>
@@ -638,20 +624,18 @@ export function QuoteStepperForm({
                               <p className="font-bold text-sm">{preset.label}</p>
                               {preset.popular && (
                                 <span
-                                  className={`text-[9px] uppercase font-bold px-2 py-0.5 rounded-full ${
-                                    isSelected
-                                      ? 'bg-white/20 text-white'
-                                      : 'bg-emerald-100 text-emerald-800'
-                                  }`}
+                                  className={`text-[9px] uppercase font-bold px-2 py-0.5 rounded-full ${isSelected
+                                    ? 'bg-white/20 text-white'
+                                    : 'bg-emerald-100 text-emerald-800'
+                                    }`}
                                 >
                                   Más solicitado
                                 </span>
                               )}
                             </div>
                             <p
-                              className={`text-xs font-mono mt-0.5 ${
-                                isSelected ? 'text-neutral-300' : 'text-neutral-500'
-                              }`}
+                              className={`text-xs font-mono mt-0.5 ${isSelected ? 'text-neutral-300' : 'text-neutral-500'
+                                }`}
                             >
                               Superficie: {preset.surface}
                             </p>
@@ -765,11 +749,10 @@ export function QuoteStepperForm({
                           deadlineDate: prev.deadlineDate.includes('-') ? prev.deadlineDate : '',
                         }))
                       }
-                      className={`p-3 rounded-2xl border text-left text-xs font-bold cursor-pointer transition-all ${
-                        formData.datePreferenceType === 'especifica'
-                          ? 'border-neutral-950 bg-neutral-950 text-white'
-                          : 'border-black/[0.08] bg-white text-neutral-700'
-                      }`}
+                      className={`p-3 rounded-2xl border text-left text-xs font-bold cursor-pointer transition-all ${formData.datePreferenceType === 'especifica'
+                        ? 'border-neutral-950 bg-neutral-950 text-white'
+                        : 'border-black/[0.08] bg-white text-neutral-700'
+                        }`}
                     >
                       📅 Tengo una fecha específica
                     </button>
@@ -782,11 +765,10 @@ export function QuoteStepperForm({
                           deadlineDate: 'Lo antes posible (Este mes)',
                         }))
                       }
-                      className={`p-3 rounded-2xl border text-left text-xs font-bold cursor-pointer transition-all ${
-                        formData.datePreferenceType === 'flexible'
-                          ? 'border-neutral-950 bg-neutral-950 text-white'
-                          : 'border-black/[0.08] bg-white text-neutral-700'
-                      }`}
+                      className={`p-3 rounded-2xl border text-left text-xs font-bold cursor-pointer transition-all ${formData.datePreferenceType === 'flexible'
+                        ? 'border-neutral-950 bg-neutral-950 text-white'
+                        : 'border-black/[0.08] bg-white text-neutral-700'
+                        }`}
                     >
                       ✨ Fecha flexible / Próximas semanas
                     </button>
@@ -826,11 +808,10 @@ export function QuoteStepperForm({
                           onClick={() =>
                             setFormData((prev) => ({ ...prev, deadlineDate: flexLabel }))
                           }
-                          className={`px-3.5 py-1.5 rounded-full text-xs font-semibold cursor-pointer ${
-                            formData.deadlineDate === flexLabel
-                              ? 'bg-naho-pink text-white'
-                              : 'bg-white border border-black/[0.08] text-neutral-700'
-                          }`}
+                          className={`px-3.5 py-1.5 rounded-full text-xs font-semibold cursor-pointer ${formData.deadlineDate === flexLabel
+                            ? 'bg-naho-pink text-white'
+                            : 'bg-white border border-black/[0.08] text-neutral-700'
+                            }`}
                         >
                           {flexLabel}
                         </button>
@@ -899,11 +880,10 @@ export function QuoteStepperForm({
                       }}
                       onDragLeave={() => setIsDragging(false)}
                       onDrop={handleDrop}
-                      className={`relative border-2 border-dashed rounded-2xl p-6 text-center transition-all cursor-pointer select-none ${
-                        isDragging
-                          ? 'border-neutral-950 bg-white scale-[1.01]'
-                          : 'border-black/15 hover:border-neutral-950 bg-white/80 hover:bg-white'
-                      }`}
+                      className={`relative border-2 border-dashed rounded-2xl p-6 text-center transition-all cursor-pointer select-none ${isDragging
+                        ? 'border-neutral-950 bg-white scale-[1.01]'
+                        : 'border-black/15 hover:border-neutral-950 bg-white/80 hover:bg-white'
+                        }`}
                     >
                       <input
                         id={imageUploadInputId}
@@ -1073,11 +1053,10 @@ export function QuoteStepperForm({
                       setCurrentStep((prev) => prev + 1);
                     }
                   }}
-                  className={`px-7 py-3 rounded-full font-semibold text-xs flex items-center gap-2 transition-all active:scale-95 ${
-                    isStepValid(currentStep)
-                      ? 'bg-neutral-950 hover:bg-neutral-800 text-white shadow-sm cursor-pointer'
-                      : 'bg-neutral-200 text-neutral-400 cursor-not-allowed'
-                  }`}
+                  className={`px-7 py-3 rounded-full font-semibold text-xs flex items-center gap-2 transition-all active:scale-95 ${isStepValid(currentStep)
+                    ? 'bg-neutral-950 hover:bg-neutral-800 text-white shadow-sm cursor-pointer'
+                    : 'bg-neutral-200 text-neutral-400 cursor-not-allowed'
+                    }`}
                 >
                   <span>Siguiente paso</span>
                   <ArrowRight className="w-3.5 h-3.5" />
@@ -1087,11 +1066,10 @@ export function QuoteStepperForm({
                   type="button"
                   disabled={!isFormComplete}
                   onClick={handleSubmitQuote}
-                  className={`px-7 py-3 rounded-full font-semibold text-xs flex items-center gap-2 transition-all active:scale-95 ${
-                    isFormComplete
-                      ? 'bg-neutral-950 hover:bg-naho-pink text-white shadow-md cursor-pointer'
-                      : 'bg-neutral-200 text-neutral-400 cursor-not-allowed'
-                  }`}
+                  className={`px-7 py-3 rounded-full font-semibold text-xs flex items-center gap-2 transition-all active:scale-95 ${isFormComplete
+                    ? 'bg-neutral-950 hover:bg-naho-pink text-white shadow-md cursor-pointer'
+                    : 'bg-neutral-200 text-neutral-400 cursor-not-allowed'
+                    }`}
                 >
                   <span>Enviar Cotización de Mural</span>
                   <ArrowRight className="w-3.5 h-3.5" />

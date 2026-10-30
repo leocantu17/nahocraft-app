@@ -6,6 +6,12 @@ export interface MuralCategory {
   description?: string;
 }
 
+export interface MuralGalleryImage {
+  id: string;
+  url: string;
+  label: string; // ej. "Resultado Final", "Antes del Mural", "Proceso / Boceto", "Detalle de Textura"
+}
+
 export interface PortfolioItem {
   id: string;
   title: string;
@@ -20,6 +26,7 @@ export interface PortfolioItem {
     location?: string;
     curatedTag?: string;
   };
+  galleryImages?: MuralGalleryImage[];
 }
 
 export interface CourseItem {
@@ -35,7 +42,7 @@ export interface CourseItem {
   enrolledCount: number;
   price: number; // MXN
   modality: 'online' | 'presencial' | 'hibrido';
-  platformName: string; // e.g., "Google Meet"
+  platformName: string; // e.g., "Google Meet" o "Taller Col. Minerva"
   meetingLink: string; // e.g., "https://meet.google.com/nah-arte-oct29"
   image: string;
   monthLabel: string; // e.g., "Octubre 2026"
@@ -121,6 +128,8 @@ export interface QuoteTicket {
   status: 'nuevo' | 'en_revision' | 'propuesta_enviada' | 'aprobado';
   formData: QuoteFormData;
   referenceArtTitle?: string;
+  quotedAmount?: number;
+  adminNotes?: string;
 }
 
 export interface AboutMeHighlight {
@@ -176,4 +185,12 @@ export interface SiteGeneralConfig {
   studioPhone: string;
   studioWhatsapp: string;
   adminEmail: string;
+  instagramHandle?: string;
+  instagramUrl?: string;
+  tiktokHandle?: string;
+  tiktokUrl?: string;
+  facebookHandle?: string;
+  facebookUrl?: string;
+  youtubeHandle?: string;
+  youtubeUrl?: string;
 }

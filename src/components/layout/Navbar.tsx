@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { localAssets } from '../../assets';
 import { useSiteData } from '../../context/SiteDataContext';
 import { ScheduleStatusBadge } from './ScheduleStatusBadge';

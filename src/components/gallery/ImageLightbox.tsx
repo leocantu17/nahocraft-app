@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { PortfolioItem } from '../../types';
 import {
   X,
@@ -10,6 +10,7 @@ import {
   Maximize2,
   ShieldCheck,
   MapPin,
+  Images,
 } from 'lucide-react';
 
 interface ImageLightboxProps {
@@ -28,6 +29,13 @@ export function ImageLightbox({
   onSelectPrev,
   onQuoteSimilar,
 }: ImageLightboxProps) {
+  const [selectedSlideIndex, setSelectedSlideIndex] = useState(0);
+
+  // Reset active slide when switching mural item
+  useEffect(() => {
+    setSelectedSlideIndex(0);
+  }, [item?.id]);
+
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -38,7 +46,22 @@ export function ImageLightbox({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose, onSelectNext, onSelectPrev]);
 
+  const slides = useMemo(() => {
+    if (!item) return [];
+    const baseSlide = {
+      id: `${item.id}-main`,
+      url: item.image,
+      label: 'Vista Principal',
+    };
+    const extraSlides = (item.galleryImages || []).filter(
+      (g) => g.url && g.url !== item.image
+    );
+    return [baseSlide, ...extraSlides];
+  }, [item]);
+
   if (!item) return null;
+
+  const activeSlide = slides[selectedSlideIndex] || slides[0];
 
   return (
     <div
@@ -61,48 +84,84 @@ export function ImageLightbox({
           <X className="w-4 h-4" />
         </button>
 
-        {/* Left: Image Container */}
-        <div className="relative lg:w-3/5 bg-neutral-950 flex items-center justify-center min-h-[320px] sm:min-h-[440px] max-h-[55vh] lg:max-h-[92vh] overflow-hidden select-none">
-          <img
-            src={item.image}
-            alt={item.title}
-            className="w-full h-full object-contain max-h-[85vh] transition-transform duration-300"
-          />
+        {/* Left: Image Container + Multi-photo Thumbnails */}
+        <div className="relative lg:w-3/5 bg-neutral-950 flex flex-col justify-between min-h-[320px] sm:min-h-[440px] max-h-[58vh] lg:max-h-[92vh] overflow-hidden select-none">
+          <div className="relative flex-1 flex items-center justify-center overflow-hidden">
+            <img
+              src={activeSlide?.url || item.image}
+              alt={`${item.title} - ${activeSlide?.label || 'Mural'}`}
+              className="w-full h-full object-contain max-h-[75vh] transition-transform duration-300"
+            />
 
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onSelectPrev();
-            }}
-            className="absolute left-3 top-1/2 -translate-y-1/2 p-2.5 rounded-full bg-white/20 hover:bg-white/35 text-white backdrop-blur-xl transition-all hover:scale-105 active:scale-95 focus:outline-none cursor-pointer"
-            aria-label="Mural anterior"
-          >
-            <ChevronLeft className="w-5 h-5" />
-          </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onSelectPrev();
+              }}
+              className="absolute left-3 top-1/2 -translate-y-1/2 p-2.5 rounded-full bg-white/20 hover:bg-white/35 text-white backdrop-blur-xl transition-all hover:scale-105 active:scale-95 focus:outline-none cursor-pointer"
+              aria-label="Mural anterior"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
 
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onSelectNext();
-            }}
-            className="absolute right-3 top-1/2 -translate-y-1/2 p-2.5 rounded-full bg-white/20 hover:bg-white/35 text-white backdrop-blur-xl transition-all hover:scale-105 active:scale-95 focus:outline-none cursor-pointer"
-            aria-label="Siguiente mural"
-          >
-            <ChevronRight className="w-5 h-5" />
-          </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onSelectNext();
+              }}
+              className="absolute right-3 top-1/2 -translate-y-1/2 p-2.5 rounded-full bg-white/20 hover:bg-white/35 text-white backdrop-blur-xl transition-all hover:scale-105 active:scale-95 focus:outline-none cursor-pointer"
+              aria-label="Siguiente mural"
+            >
+              <ChevronRight className="w-5 h-5" />
+            </button>
 
-          <span className="absolute bottom-3 left-3 bg-black/60 backdrop-blur-md px-3 py-1 rounded-full text-[11px] text-white/90 flex items-center gap-1.5 font-medium">
-            <Maximize2 className="w-3 h-3 text-neutral-400" />
-            Mural Real • Nahocraft
-          </span>
+            <span className="absolute bottom-3 left-3 bg-black/65 backdrop-blur-md px-3 py-1 rounded-full text-[11px] text-white/95 flex items-center gap-1.5 font-medium">
+              <Maximize2 className="w-3 h-3 text-naho-pink" />
+              {activeSlide?.label || 'Mural Real • Nahocraft'}
+            </span>
+          </div>
+
+          {/* Multi-photo Thumbnails Strip */}
+          {slides.length > 1 && (
+            <div className="bg-black/90 border-t border-white/10 px-4 py-3 flex items-center gap-2.5 overflow-x-auto">
+              <span className="text-[10px] font-mono uppercase tracking-wider text-white/60 flex items-center gap-1 shrink-0 mr-1">
+                <Images className="w-3.5 h-3.5 text-naho-pink" />
+                <span>Vistas ({slides.length}):</span>
+              </span>
+              {slides.map((slide, idx) => {
+                const isSelected = idx === selectedSlideIndex;
+                return (
+                  <button
+                    key={slide.id}
+                    type="button"
+                    onClick={() => setSelectedSlideIndex(idx)}
+                    className={`group relative flex items-center gap-2 pr-2.5 rounded-xl overflow-hidden border transition-all shrink-0 cursor-pointer ${
+                      isSelected
+                        ? 'border-naho-pink bg-white/15 text-white shadow-sm'
+                        : 'border-white/15 bg-white/5 text-white/60 hover:text-white hover:border-white/35'
+                    }`}
+                  >
+                    <img
+                      src={slide.url}
+                      alt={slide.label}
+                      className="w-10 h-10 object-cover shrink-0"
+                    />
+                    <span className="text-[10px] font-semibold whitespace-nowrap">
+                      {slide.label}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         {/* Right: Project Details */}
         <div className="lg:w-2/5 p-6 sm:p-8 flex flex-col justify-between overflow-y-auto bg-white">
           <div>
-            <div className="flex items-center gap-2 mb-3">
+            <div className="flex flex-wrap items-center gap-2 mb-3">
               <span className="px-3 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider bg-black/[0.04] text-neutral-700">
                 {item.categoryLabel}
               </span>
@@ -146,10 +205,10 @@ export function ImageLightbox({
               <div className="flex justify-between items-center py-0.5 border-b border-black/[0.03]">
                 <span className="text-neutral-500 font-medium flex items-center gap-1">
                   <MapPin className="w-3 h-3 text-naho-pink" />
-                  Cobertura de Servicio:
+                  Ubicación / Cobertura:
                 </span>
                 <span className="font-semibold text-neutral-900">
-                  Tampico, Cd. Madero y Altamira
+                  {item.details?.location || 'Tampico, Cd. Madero y Altamira'}
                 </span>
               </div>
               <div className="flex justify-between items-center py-0.5">

@@ -47,11 +47,13 @@ function loadFromStorage<T>(key: string, fallback: T): T {
   }
 }
 
-function saveToStorage<T>(key: string, value: T): void {
+function saveToStorage<T>(key: string, value: T): boolean {
   try {
     localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    // Ignore storage quota errors
+    return true;
+  } catch (err) {
+    console.warn('[Nahocraft Storage]: No se pudo guardar en localStorage (cuota excedida).', err);
+    return false;
   }
 }
 
@@ -64,6 +66,7 @@ interface SiteDataContextValue {
 
   muralCategories: MuralCategory[];
   addMuralCategory: (cat: MuralCategory) => void;
+  updateMuralCategory: (cat: MuralCategory) => void;
   deleteMuralCategory: (id: string) => void;
 
   muralItems: PortfolioItem[];
@@ -78,11 +81,16 @@ interface SiteDataContextValue {
 
   courseEnrollments: CourseEnrollment[];
   registerCourseEnrollment: (enrollment: CourseEnrollment) => void;
+  deleteCourseEnrollment: (enrollmentId: string) => void;
   bindEnrollmentSession: (enrollmentId: string, sessionId: string) => void;
 
   quoteTickets: QuoteTicket[];
   addQuoteTicket: (ticket: QuoteTicket) => void;
   updateQuoteTicketStatus: (folio: string, status: QuoteTicket['status']) => void;
+  updateQuoteTicketDetails: (
+    folio: string,
+    partial: Partial<Pick<QuoteTicket, 'status' | 'quotedAmount' | 'adminNotes'>>
+  ) => void;
   deleteQuoteTicket: (folio: string) => void;
 
   aboutMe: AboutMeContent;
@@ -109,9 +117,10 @@ export function SiteDataProvider({ children }: { children: React.ReactNode }) {
     return p || '/';
   });
 
-  const [siteConfig, setSiteConfig] = useState<SiteGeneralConfig>(() =>
-    loadFromStorage(STORAGE_KEYS.siteConfig, INITIAL_SITE_CONFIG)
-  );
+  const [siteConfig, setSiteConfig] = useState<SiteGeneralConfig>(() => ({
+    ...INITIAL_SITE_CONFIG,
+    ...loadFromStorage(STORAGE_KEYS.siteConfig, INITIAL_SITE_CONFIG),
+  }));
   const [muralCategories, setMuralCategories] = useState<MuralCategory[]>(() =>
     loadFromStorage(STORAGE_KEYS.muralCategories, INITIAL_MURAL_CATEGORIES)
   );
@@ -127,9 +136,10 @@ export function SiteDataProvider({ children }: { children: React.ReactNode }) {
   const [quoteTickets, setQuoteTickets] = useState<QuoteTicket[]>(() =>
     loadFromStorage(STORAGE_KEYS.quoteTickets, INITIAL_QUOTE_TICKETS)
   );
-  const [aboutMe, setAboutMe] = useState<AboutMeContent>(() =>
-    loadFromStorage(STORAGE_KEYS.aboutMe, INITIAL_ABOUT_ME)
-  );
+  const [aboutMe, setAboutMe] = useState<AboutMeContent>(() => ({
+    ...INITIAL_ABOUT_ME,
+    ...loadFromStorage(STORAGE_KEYS.aboutMe, INITIAL_ABOUT_ME),
+  }));
   const [inPersonClasses, setInPersonClasses] = useState<InPersonClassProgram[]>(() =>
     loadFromStorage(STORAGE_KEYS.inPersonClasses, INITIAL_IN_PERSON_CLASSES)
   );
@@ -153,13 +163,19 @@ export function SiteDataProvider({ children }: { children: React.ReactNode }) {
   // Sync across tabs if localStorage changes
   useEffect(() => {
     const handleStorage = () => {
-      setSiteConfig(loadFromStorage(STORAGE_KEYS.siteConfig, INITIAL_SITE_CONFIG));
+      setSiteConfig({
+        ...INITIAL_SITE_CONFIG,
+        ...loadFromStorage(STORAGE_KEYS.siteConfig, INITIAL_SITE_CONFIG),
+      });
       setMuralCategories(loadFromStorage(STORAGE_KEYS.muralCategories, INITIAL_MURAL_CATEGORIES));
       setMuralItems(loadFromStorage(STORAGE_KEYS.muralItems, PORTFOLIO_ITEMS));
       setCourses(loadFromStorage(STORAGE_KEYS.courses, INITIAL_COURSES));
       setCourseEnrollments(loadFromStorage(STORAGE_KEYS.courseEnrollments, INITIAL_COURSE_ENROLLMENTS));
       setQuoteTickets(loadFromStorage(STORAGE_KEYS.quoteTickets, INITIAL_QUOTE_TICKETS));
-      setAboutMe(loadFromStorage(STORAGE_KEYS.aboutMe, INITIAL_ABOUT_ME));
+      setAboutMe({
+        ...INITIAL_ABOUT_ME,
+        ...loadFromStorage(STORAGE_KEYS.aboutMe, INITIAL_ABOUT_ME),
+      });
       setInPersonClasses(loadFromStorage(STORAGE_KEYS.inPersonClasses, INITIAL_IN_PERSON_CLASSES));
       setStudioPhotos(loadFromStorage(STORAGE_KEYS.studioPhotos, INITIAL_STUDIO_PHOTOS));
       setWeeklySchedule(loadFromStorage(STORAGE_KEYS.weeklySchedule, WEEKLY_SCHEDULE));
@@ -195,6 +211,22 @@ export function SiteDataProvider({ children }: { children: React.ReactNode }) {
     setMuralCategories((prev) => {
       const next = [...prev.filter((c) => c.id !== cat.id), cat];
       saveToStorage(STORAGE_KEYS.muralCategories, next);
+      return next;
+    });
+  }, []);
+
+  const updateMuralCategory = useCallback((cat: MuralCategory) => {
+    setMuralCategories((prev) => {
+      const next = prev.map((c) => (c.id === cat.id ? cat : c));
+      saveToStorage(STORAGE_KEYS.muralCategories, next);
+      return next;
+    });
+    // Sincronizar etiqueta en los murales existentes de esa categoría
+    setMuralItems((prev) => {
+      const next = prev.map((m) =>
+        m.category === cat.id ? { ...m, categoryLabel: cat.label } : m
+      );
+      saveToStorage(STORAGE_KEYS.muralItems, next);
       return next;
     });
   }, []);
@@ -272,6 +304,27 @@ export function SiteDataProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  const deleteCourseEnrollment = useCallback((enrollmentId: string) => {
+    setCourseEnrollments((prev) => {
+      const target = prev.find((e) => e.id === enrollmentId);
+      const next = prev.filter((e) => e.id !== enrollmentId);
+      saveToStorage(STORAGE_KEYS.courseEnrollments, next);
+
+      if (target) {
+        setCourses((prevCourses) => {
+          const updatedCourses = prevCourses.map((c) =>
+            c.id === target.courseId
+              ? { ...c, enrolledCount: Math.max(0, c.enrolledCount - 1) }
+              : c
+          );
+          saveToStorage(STORAGE_KEYS.courses, updatedCourses);
+          return updatedCourses;
+        });
+      }
+      return next;
+    });
+  }, []);
+
   const bindEnrollmentSession = useCallback((enrollmentId: string, sessionId: string) => {
     setCourseEnrollments((prev) => {
       const next = prev.map((e) =>
@@ -297,6 +350,20 @@ export function SiteDataProvider({ children }: { children: React.ReactNode }) {
       return next;
     });
   }, []);
+
+  const updateQuoteTicketDetails = useCallback(
+    (
+      folio: string,
+      partial: Partial<Pick<QuoteTicket, 'status' | 'quotedAmount' | 'adminNotes'>>
+    ) => {
+      setQuoteTickets((prev) => {
+        const next = prev.map((t) => (t.folio === folio ? { ...t, ...partial } : t));
+        saveToStorage(STORAGE_KEYS.quoteTickets, next);
+        return next;
+      });
+    },
+    []
+  );
 
   const deleteQuoteTicket = useCallback((folio: string) => {
     setQuoteTickets((prev) => {
@@ -363,6 +430,7 @@ export function SiteDataProvider({ children }: { children: React.ReactNode }) {
         updateSiteConfig,
         muralCategories,
         addMuralCategory,
+        updateMuralCategory,
         deleteMuralCategory,
         muralItems,
         addMuralItem,
@@ -374,10 +442,12 @@ export function SiteDataProvider({ children }: { children: React.ReactNode }) {
         deleteCourse,
         courseEnrollments,
         registerCourseEnrollment,
+        deleteCourseEnrollment,
         bindEnrollmentSession,
         quoteTickets,
         addQuoteTicket,
         updateQuoteTicketStatus,
+        updateQuoteTicketDetails,
         deleteQuoteTicket,
         aboutMe,
         updateAboutMe,

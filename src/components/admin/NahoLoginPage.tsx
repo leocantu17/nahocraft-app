@@ -8,13 +8,17 @@ import {
   ArrowLeft,
   LogIn,
   AlertCircle,
-  RotateCcw,
 } from 'lucide-react';
 
-const AUTH_STORAGE_KEY = 'nahocraft_v2_admin_authenticated';
+const AUTH_STORAGE_KEY = 'nahocraft_v3_admin_session';
 const LOCKOUT_STORAGE_KEY = 'nahocraft_v3_ip_lockout_state';
 const MAX_ATTEMPTS = 3;
 const LOCKOUT_DURATION_MS = 24 * 60 * 60 * 1000; // 24 horas de bloqueo de IP
+const SESSION_DURATION_MS = 12 * 60 * 60 * 1000; // 12 horas de vigencia de sesión
+
+// Hash SHA-256 precalculado de la credencial por defecto para no exponerla en texto plano en el código
+const DEFAULT_PASSWORD_SHA256 =
+  '25be5222c4a8d2c68f8b55d69df1f0139ef6b87f1e720a79928f1b742f2a0e10';
 
 interface LockoutState {
   failedAttempts: number;
@@ -22,9 +26,37 @@ interface LockoutState {
   blockedIp: string;
 }
 
+interface AdminSessionPayload {
+  token: string;
+  expiresAt: number;
+}
+
+async function computeSha256Hex(input: string): Promise<string> {
+  if (typeof window !== 'undefined' && window.crypto?.subtle) {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(input);
+    const hashBuffer = await window.crypto.subtle.digest('SHA-256', data);
+    return Array.from(new Uint8Array(hashBuffer))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+  }
+  return '';
+}
+
 export function isNahoAuthenticated(): boolean {
   try {
-    return localStorage.getItem(AUTH_STORAGE_KEY) === 'true';
+    // Limpiar llave antigua insegura si existía
+    localStorage.removeItem('nahocraft_v2_admin_authenticated');
+
+    const raw = sessionStorage.getItem(AUTH_STORAGE_KEY) || localStorage.getItem(AUTH_STORAGE_KEY);
+    if (!raw) return false;
+    const parsed = JSON.parse(raw) as AdminSessionPayload;
+    if (!parsed.token || !parsed.expiresAt || Date.now() > parsed.expiresAt) {
+      sessionStorage.removeItem(AUTH_STORAGE_KEY);
+      localStorage.removeItem(AUTH_STORAGE_KEY);
+      return false;
+    }
+    return parsed.token.startsWith('nh_sess_') && parsed.token.length >= 24;
   } catch {
     return false;
   }
@@ -32,9 +64,24 @@ export function isNahoAuthenticated(): boolean {
 
 export function setNahoAuthenticated(val: boolean): void {
   try {
+    localStorage.removeItem('nahocraft_v2_admin_authenticated');
     if (val) {
-      localStorage.setItem(AUTH_STORAGE_KEY, 'true');
+      const randomBytes = new Uint8Array(12);
+      if (typeof window !== 'undefined' && window.crypto?.getRandomValues) {
+        window.crypto.getRandomValues(randomBytes);
+      }
+      const hex = Array.from(randomBytes)
+        .map((b) => b.toString(16).padStart(2, '0'))
+        .join('');
+      const payload: AdminSessionPayload = {
+        token: `nh_sess_${hex}_${Date.now().toString(36)}`,
+        expiresAt: Date.now() + SESSION_DURATION_MS,
+      };
+      const serialized = JSON.stringify(payload);
+      sessionStorage.setItem(AUTH_STORAGE_KEY, serialized);
+      localStorage.setItem(AUTH_STORAGE_KEY, serialized);
     } else {
+      sessionStorage.removeItem(AUTH_STORAGE_KEY);
       localStorage.removeItem(AUTH_STORAGE_KEY);
     }
   } catch {
@@ -47,11 +94,7 @@ export function NahoLoginPage() {
 
   const rawEnvEmail = (import.meta.env.VITE_ADMIN_EMAIL || '').trim();
   const rawEnvPassword = (import.meta.env.VITE_ADMIN_PASSWORD || '').trim();
-
   const expectedEmail = rawEnvEmail || 'Centrodearte@nahocraft.com';
-  // If .env had unquoted Naho12#, dotenv strips '#' as a comment leaving 'Naho12'
-  const expectedPassword =
-    !rawEnvPassword || rawEnvPassword === 'Naho12' ? 'Naho12#' : rawEnvPassword;
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -121,13 +164,22 @@ export function NahoLoginPage() {
     return `${hours}h ${minutes}m ${seconds}s`;
   };
 
-  const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (isCurrentlyLocked) return;
 
     const cleanEmail = email.trim().toLowerCase();
     const isValidEmail = cleanEmail === expectedEmail.trim().toLowerCase();
-    const isValidPassword = password === expectedPassword || password.trim() === expectedPassword;
+
+    const trimmedPass = password.trim();
+    const inputHash = await computeSha256Hex(trimmedPass);
+
+    // Check against custom env password (if set) or SHA-256 hash
+    const isValidPassword =
+      inputHash === DEFAULT_PASSWORD_SHA256 ||
+      (rawEnvPassword.length > 0 &&
+        rawEnvPassword !== 'Naho12' &&
+        (password === rawEnvPassword || trimmedPass === rawEnvPassword));
 
     if (isValidEmail && isValidPassword) {
       saveLockoutState({
@@ -164,15 +216,6 @@ export function NahoLoginPage() {
         `Credenciales incorrectas (${left} ${left === 1 ? 'intento restante' : 'intentos restantes'}).`
       );
     }
-  };
-
-  const handleResetLockoutForDemo = () => {
-    saveLockoutState({
-      failedAttempts: 0,
-      lockedUntil: null,
-      blockedIp: clientIp,
-    });
-    setErrorMessage(null);
   };
 
   return (
@@ -223,7 +266,7 @@ export function NahoLoginPage() {
             </div>
           </div>
 
-          {/* IP Lockout State */}
+          {/* IP Lockout State (Without public bypass button) */}
           {isCurrentlyLocked ? (
             <div className="space-y-6">
               <div
@@ -234,24 +277,26 @@ export function NahoLoginPage() {
                   <ShieldAlert className="w-5 h-5" />
                 </div>
                 <h2 className="text-base font-bold text-rose-950">
-                  Acceso bloqueado temporalmente
+                  Acceso bloqueado por seguridad
                 </h2>
                 <p className="text-xs text-rose-800/90 leading-relaxed">
-                  Se superó el límite de {MAX_ATTEMPTS} intentos de inicio de sesión. Por seguridad, el acceso desde tu dirección IP ({lockoutState.blockedIp || clientIp}) ha sido suspendido.
+                  Se superó el límite de {MAX_ATTEMPTS} intentos de inicio de sesión. Por seguridad, el acceso desde tu dirección IP ({lockoutState.blockedIp || clientIp}) ha sido suspendido temporalmente.
                 </p>
                 <p className="text-xs font-mono font-bold text-rose-700 pt-1">
-                  Tiempo restante: {formatLockoutRemaining()}
+                  Tiempo restante de bloqueo: {formatLockoutRemaining()}
                 </p>
               </div>
 
-              <button
-                type="button"
-                onClick={handleResetLockoutForDemo}
-                className="inline-flex items-center gap-1.5 text-xs text-neutral-400 hover:text-neutral-800 transition-colors cursor-pointer"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span>Restablecer bloqueo</span>
-              </button>
+              <div className="text-center">
+                <button
+                  type="button"
+                  onClick={() => navigateTo('/')}
+                  className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-500 hover:text-neutral-900 transition-colors cursor-pointer"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Volver al sitio principal</span>
+                </button>
+              </div>
             </div>
           ) : (
             /* Minimalist Form */

@@ -6,14 +6,15 @@ import { Clock, Calendar, XCircle } from 'lucide-react';
 
 export function ScheduleCard() {
   const { weeklySchedule } = useSiteData();
-  const [status, setStatus] = useState(() => isStudioOpenNow());
+  const [status, setStatus] = useState(() => isStudioOpenNow(new Date(), weeklySchedule));
 
   useEffect(() => {
+    setStatus(isStudioOpenNow(new Date(), weeklySchedule));
     const timer = setInterval(() => {
-      setStatus(isStudioOpenNow());
+      setStatus(isStudioOpenNow(new Date(), weeklySchedule));
     }, 30000);
     return () => clearInterval(timer);
-  }, []);
+  }, [weeklySchedule]);
 
   return (
     <div id="horarios" className="apple-card rounded-[2.5rem] p-7 sm:p-9">

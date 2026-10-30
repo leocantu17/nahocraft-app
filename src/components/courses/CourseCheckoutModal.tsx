@@ -17,6 +17,11 @@ import {
   UserCheck,
   AlertCircle,
   Sparkles,
+  Download,
+  CalendarPlus,
+  Copy,
+  Check,
+  GraduationCap,
 } from 'lucide-react';
 
 interface CourseCheckoutModalProps {
@@ -24,8 +29,21 @@ interface CourseCheckoutModalProps {
   onClose: () => void;
 }
 
+function buildCalendarDates(eventDate: string, eventTimeDisplay: string) {
+  const cleanDate = (eventDate || '2026-10-29').replace(/-/g, '');
+  const match = eventTimeDisplay.match(/(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})/);
+  const startH = match ? match[1].padStart(2, '0') : '17';
+  const startM = match ? match[2].padStart(2, '0') : '00';
+  const endH = match ? match[3].padStart(2, '0') : '19';
+  const endM = match ? match[4].padStart(2, '0') : '30';
+  return {
+    start: `${cleanDate}T${startH}${startM}00`,
+    end: `${cleanDate}T${endH}${endM}00`,
+  };
+}
+
 export function CourseCheckoutModal({ course, onClose }: CourseCheckoutModalProps) {
-  const { registerCourseEnrollment, courseEnrollments } = useSiteData();
+  const { registerCourseEnrollment, courseEnrollments, siteConfig } = useSiteData();
   const titleId = useId();
   const nameId = useId();
   const emailId = useId();
@@ -38,6 +56,7 @@ export function CourseCheckoutModal({ course, onClose }: CourseCheckoutModalProp
   const [formError, setFormError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [completedEnrollment, setCompletedEnrollment] = useState<CourseEnrollment | null>(null);
+  const [copiedCode, setCopiedCode] = useState(false);
 
   // Close on Escape key
   useEffect(() => {
@@ -178,6 +197,116 @@ export function CourseCheckoutModal({ course, onClose }: CourseCheckoutModalProp
     }
   };
 
+  const handleOpenGoogleCalendar = () => {
+    if (!completedEnrollment) return;
+    const { start, end } = buildCalendarDates(course.eventDate, course.eventTimeDisplay);
+    const details = `Curso en vivo con Nahomy (${siteConfig.studioName}).\nFolio: ${completedEnrollment.folio}\nCódigo de Acceso Personal: ${completedEnrollment.accessCode}\nEnlace de sesión: ${completedEnrollment.meetingLink}`;
+    const url = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(
+      `Nahocraft: ${course.title}`
+    )}&dates=${start}/${end}&details=${encodeURIComponent(details)}&location=${encodeURIComponent(
+      course.modality === 'presencial' ? siteConfig.studioAddress : completedEnrollment.meetingLink
+    )}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleDownloadIcs = () => {
+    if (!completedEnrollment) return;
+    const { start, end } = buildCalendarDates(course.eventDate, course.eventTimeDisplay);
+    const icsContent = [
+      'BEGIN:VCALENDAR',
+      'VERSION:2.0',
+      'PRODID:-//Nahocraft Centro de Arte//Cursos//ES',
+      'BEGIN:VEVENT',
+      `UID:${completedEnrollment.id}@nahocraft.com`,
+      `DTSTAMP:${start}Z`,
+      `DTSTART:${start}`,
+      `DTEND:${end}`,
+      `SUMMARY:Nahocraft: ${course.title}`,
+      `DESCRIPTION:Folio: ${completedEnrollment.folio} | Código: ${completedEnrollment.accessCode} | Acceso: ${completedEnrollment.meetingLink}`,
+      `LOCATION:${course.modality === 'presencial' ? siteConfig.studioAddress : completedEnrollment.meetingLink}`,
+      'END:VEVENT',
+      'END:VCALENDAR',
+    ].join('\r\n');
+
+    const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `Calendario-${completedEnrollment.folio.replace('#', '')}.ics`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(link.href);
+  };
+
+  const handleDownloadTicketPass = () => {
+    if (!completedEnrollment) return;
+    const htmlPass = `<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <title>Pase Oficial ${completedEnrollment.folio} - Nahocraft</title>
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; background: #F5F2EB; color: #181B20; padding: 40px 20px; }
+    .ticket { max-width: 580px; margin: 0 auto; background: #fff; border-radius: 24px; overflow: hidden; box-shadow: 0 20px 50px rgba(0,0,0,0.1); border: 1px solid rgba(0,0,0,0.08); }
+    .header { background: #181B20; color: #fff; padding: 28px 32px; display: flex; justify-content: space-between; align-items: center; border-bottom: 4px solid #FE3770; }
+    .body { padding: 32px; }
+    .badge { display: inline-block; background: #FE3770; color: #fff; font-size: 11px; font-weight: 800; padding: 4px 12px; border-radius: 99px; text-transform: uppercase; letter-spacing: 0.1em; }
+    .code-box { background: #FBFBFA; border: 2px dashed #181B20; border-radius: 16px; padding: 20px; text-align: center; margin: 24px 0; }
+    .code { font-family: monospace; font-size: 26px; font-weight: 900; color: #FE3770; letter-spacing: 0.12em; margin-top: 6px; }
+    .row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #eee; font-size: 14px; }
+    .label { color: #666; font-weight: 600; }
+    .val { font-weight: 700; color: #111; text-align: right; }
+  </style>
+</head>
+<body>
+  <div class="ticket">
+    <div class="header">
+      <div>
+        <div class="badge">Boleto Personal Confirmado</div>
+        <h1 style="margin: 10px 0 0; font-size: 22px;">Nahocraft • Centro de Arte</h1>
+      </div>
+      <div style="text-align: right; font-family: monospace; font-size: 15px; opacity: 0.9;">
+        ${completedEnrollment.folio}
+      </div>
+    </div>
+    <div class="body">
+      <h2 style="margin-top: 0; font-size: 20px;">${completedEnrollment.courseTitle}</h2>
+      <div class="code-box">
+        <div style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.15em; color: #666; font-weight: 700;">Código Único de Acceso a Clase</div>
+        <div class="code">${completedEnrollment.accessCode}</div>
+      </div>
+      <div class="row"><span class="label">Alumno(a):</span><span class="val">${completedEnrollment.buyerName}</span></div>
+      <div class="row"><span class="label">Correo Vinculado:</span><span class="val">${completedEnrollment.buyerEmail}</span></div>
+      <div class="row"><span class="label">Fecha:</span><span class="val">${completedEnrollment.courseDateDisplay}</span></div>
+      <div class="row"><span class="label">Horario:</span><span class="val">${completedEnrollment.courseTimeDisplay}</span></div>
+      <div class="row"><span class="label">Modalidad / Sala:</span><span class="val">${completedEnrollment.platformName}</span></div>
+      <div class="row"><span class="label">Enlace Directo:</span><span class="val">${completedEnrollment.meetingLink}</span></div>
+      <div class="row"><span class="label">Total Pagado:</span><span class="val">$${completedEnrollment.totalPaid.toLocaleString('es-MX')} MXN</span></div>
+      <p style="font-size: 12px; color: #777; text-align: center; margin-top: 24px;">
+        Conserva este pase. Puedes usar tu código <strong>${completedEnrollment.accessCode}</strong> en la sección de Cursos de nahocraft.com para entrar a tu sesión.
+      </p>
+    </div>
+  </div>
+</body>
+</html>`;
+
+    const blob = new Blob([htmlPass], { type: 'text/html;charset=utf-8' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `Pase-${completedEnrollment.folio.replace('#', '')}-${completedEnrollment.accessCode}.html`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(link.href);
+  };
+
+  const modalityLabel =
+    course.modality === 'presencial'
+      ? 'Presencial en Taller'
+      : course.modality === 'hibrido'
+        ? 'Modalidad Híbrida'
+        : 'En Línea en Vivo';
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-neutral-950/75 backdrop-blur-md animate-in fade-in duration-200"
@@ -189,9 +318,8 @@ export function CourseCheckoutModal({ course, onClose }: CourseCheckoutModalProp
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
-        className={`relative w-full ${
-          completedEnrollment ? 'max-w-xl' : 'max-w-4xl'
-        } rounded-[2.5rem] bg-white text-neutral-900 shadow-[0_32px_90px_rgba(0,0,0,0.45)] border border-black/[0.08] overflow-hidden max-h-[92vh] flex flex-col transition-all`}
+        className={`relative w-full ${completedEnrollment ? 'max-w-2xl' : 'max-w-4xl'
+          } rounded-[2.5rem] bg-white text-neutral-900 shadow-[0_32px_90px_rgba(0,0,0,0.45)] border border-black/[0.08] overflow-hidden max-h-[92vh] flex flex-col transition-all`}
       >
         {/* Close Button */}
         <button
@@ -233,7 +361,7 @@ export function CourseCheckoutModal({ course, onClose }: CourseCheckoutModalProp
                   {/* Course Title & Schedule */}
                   <div className="space-y-3">
                     <span className="text-[11px] font-mono uppercase tracking-widest text-naho-pink font-bold block">
-                      Inscripción al Curso
+                      Inscripción • {modalityLabel}
                     </span>
                     <h2
                       id={titleId}
@@ -253,8 +381,14 @@ export function CourseCheckoutModal({ course, onClose }: CourseCheckoutModalProp
                       </div>
                       <div className="flex items-center gap-2.5">
                         <Video className="w-4 h-4 text-naho-blue shrink-0" />
-                        <span>Sesión en vivo ({course.platformName})</span>
+                        <span>{course.platformName}</span>
                       </div>
+                      {course.level && (
+                        <div className="flex items-center gap-2.5">
+                          <GraduationCap className="w-4 h-4 text-emerald-400 shrink-0" />
+                          <span>Nivel: {course.level}</span>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -265,7 +399,7 @@ export function CourseCheckoutModal({ course, onClose }: CourseCheckoutModalProp
                       <span>Entrada Personal (1 por cuenta)</span>
                     </div>
                     <p className="text-[11px] text-neutral-300 leading-relaxed">
-                      Tu boleto es individual y quedará vinculado directamente al correo electrónico que registres para enviarte ahí el acceso e indicaciones del curso.
+                      Tu boleto es individual y quedará vinculado directamente al correo electrónico que registres para enviarte ahí tu código de acceso e indicaciones.
                     </p>
                   </div>
                 </div>
@@ -305,7 +439,7 @@ export function CourseCheckoutModal({ course, onClose }: CourseCheckoutModalProp
                       Completa tu inscripción
                     </h3>
                     <p className="text-xs sm:text-sm text-neutral-500 mt-1">
-                      Ingresa tus datos para enviarte a tu correo toda la información y el acceso al curso.
+                      Ingresa tus datos para enviarte a tu correo toda la información y tu pase personal.
                     </p>
                   </div>
 
@@ -432,26 +566,23 @@ export function CourseCheckoutModal({ course, onClose }: CourseCheckoutModalProp
                             key={opt.id}
                             type="button"
                             onClick={() => setPaymentMethod(opt.id)}
-                            className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
-                              selected
-                                ? 'border-neutral-950 bg-neutral-950 text-white shadow-sm'
-                                : 'border-neutral-200 bg-neutral-50/60 hover:bg-neutral-100 text-neutral-800'
-                            }`}
+                            className={`p-3.5 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between ${selected
+                              ? 'border-neutral-950 bg-neutral-950 text-white shadow-sm'
+                              : 'border-neutral-200 bg-neutral-50/60 hover:bg-neutral-100 text-neutral-800'
+                              }`}
                           >
                             <div className="flex items-center justify-between gap-2">
                               <span className="text-xs font-bold">{opt.label}</span>
                               <span
-                                className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${
-                                  selected ? 'border-naho-pink bg-naho-pink' : 'border-neutral-400'
-                                }`}
+                                className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${selected ? 'border-naho-pink bg-naho-pink' : 'border-neutral-400'
+                                  }`}
                               >
                                 {selected && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
                               </span>
                             </div>
                             <span
-                              className={`text-[11px] mt-1 ${
-                                selected ? 'text-neutral-300' : 'text-neutral-500'
-                              }`}
+                              className={`text-[11px] mt-1 ${selected ? 'text-neutral-300' : 'text-neutral-500'
+                                }`}
                             >
                               {opt.desc}
                             </span>
@@ -486,67 +617,115 @@ export function CourseCheckoutModal({ course, onClose }: CourseCheckoutModalProp
               </form>
             </div>
           ) : (
-            /* Post-Purchase View: Simple, Warm Confirmation ("Gracias por inscribirte al curso") */
-            <div className="p-8 sm:p-11 text-center space-y-6">
+            /* Post-Purchase View: Digital Ticket Pass + Calendar Actions */
+            <div className="p-7 sm:p-10 text-center space-y-6">
               <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto">
                 <CheckCircle2 className="w-9 h-9" />
               </div>
 
-              <div className="space-y-2.5">
+              <div className="space-y-2">
                 <span className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-naho-pink/10 text-naho-pink text-[11px] font-bold uppercase tracking-wider">
                   <Sparkles className="w-3.5 h-3.5" />
-                  Inscripción Confirmada
+                  Inscripción Confirmada • {completedEnrollment.folio}
                 </span>
 
                 <h3
                   id={titleId}
                   className="text-2xl sm:text-3xl font-black text-neutral-950 tracking-tight leading-tight"
                 >
-                  ¡Muchas gracias por inscribirte al curso, {completedEnrollment.buyerName}!
+                  ¡Muchas gracias por inscribirte, {completedEnrollment.buyerName}!
                 </h3>
 
-                <p className="text-sm text-neutral-600 max-w-md mx-auto leading-relaxed">
-                  Tu lugar ha quedado registrado con éxito. En unos momentos recibirás un correo electrónico en{' '}
-                  <strong className="text-neutral-900">{completedEnrollment.buyerEmail}</strong>{' '}
-                  donde vendrá toda la información detallada del curso, las indicaciones previas y tu enlace personal para conectarte el día de la clase.
+                <p className="text-xs sm:text-sm text-neutral-600 max-w-lg mx-auto leading-relaxed">
+                  Hemos enviado tu confirmación a{' '}
+                  <strong className="text-neutral-900">{completedEnrollment.buyerEmail}</strong>.
+                  Aquí tienes tu código personal de acceso y las opciones para descargar tu boleto o agendar la clase en tu calendario.
                 </p>
               </div>
 
-              {/* Clean Course Info Summary */}
-              <div className="p-5 rounded-3xl bg-neutral-50 border border-black/[0.06] text-left space-y-3">
-                <div>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 block">
-                    Curso Registrado
-                  </span>
-                  <p className="font-extrabold text-sm sm:text-base text-neutral-900 mt-0.5">
-                    {completedEnrollment.courseTitle}
-                  </p>
+              {/* Digital Pass Code Box */}
+              <div className="p-5 rounded-3xl bg-neutral-950 text-white border border-black/10 space-y-3 text-left relative overflow-hidden">
+                <div className="flex flex-wrap items-center justify-between gap-2 pb-3 border-b border-white/10">
+                  <div>
+                    <span className="text-[10px] font-mono uppercase tracking-widest text-naho-pink font-bold block">
+                      Código Personal de Acceso a Clase
+                    </span>
+                    <span className="font-mono text-xl sm:text-2xl font-black tracking-wider text-white">
+                      {completedEnrollment.accessCode}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(completedEnrollment.accessCode);
+                      setCopiedCode(true);
+                      setTimeout(() => setCopiedCode(false), 2500);
+                    }}
+                    className="px-3.5 py-2 rounded-xl bg-white/10 hover:bg-white/20 text-xs font-bold text-white inline-flex items-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    {copiedCode ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-emerald-400" />
+                        <span>¡Copiado!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-3.5 h-3.5 text-naho-pink" />
+                        <span>Copiar Código</span>
+                      </>
+                    )}
+                  </button>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-black/[0.05] text-xs">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 block">
+                      Curso Registrado
+                    </span>
+                    <p className="font-bold text-white mt-0.5">
+                      {completedEnrollment.courseTitle}
+                    </p>
+                  </div>
                   <div>
                     <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 block">
                       Fecha y Horario
                     </span>
-                    <p className="font-semibold text-neutral-800 mt-0.5">
+                    <p className="font-semibold text-naho-yellow font-mono mt-0.5">
                       {completedEnrollment.courseDateDisplay} • {completedEnrollment.courseTimeDisplay}
-                    </p>
-                  </div>
-
-                  <div>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 block">
-                      Información enviada a
-                    </span>
-                    <p className="font-mono font-semibold text-naho-pink truncate mt-0.5">
-                      {completedEnrollment.buyerEmail}
                     </p>
                   </div>
                 </div>
               </div>
 
-              <p className="text-xs text-neutral-400">
-                Recuerda revisar tu bandeja de entrada (o carpeta de promociones/spam) antes de la fecha del curso.
-              </p>
+              {/* Action Buttons: Download Pass & Add to Calendar */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                <button
+                  type="button"
+                  onClick={handleDownloadTicketPass}
+                  className="py-3 px-4 rounded-2xl bg-neutral-100 hover:bg-neutral-200 text-neutral-900 font-bold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                >
+                  <Download className="w-4 h-4 text-naho-pink shrink-0" />
+                  <span>Descargar Boleto</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleOpenGoogleCalendar}
+                  className="py-3 px-4 rounded-2xl bg-neutral-100 hover:bg-neutral-200 text-neutral-900 font-bold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                >
+                  <CalendarPlus className="w-4 h-4 text-naho-blue shrink-0" />
+                  <span>Google Calendar</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleDownloadIcs}
+                  className="py-3 px-4 rounded-2xl bg-neutral-100 hover:bg-neutral-200 text-neutral-900 font-bold text-xs flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                >
+                  <Calendar className="w-4 h-4 text-naho-orange shrink-0" />
+                  <span>Calendario Apple/ICS</span>
+                </button>
+              </div>
 
               <div className="pt-2">
                 <button

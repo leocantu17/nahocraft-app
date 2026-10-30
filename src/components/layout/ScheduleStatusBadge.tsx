@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { isStudioOpenNow } from '../../data/scheduleData';
+import { useSiteData } from '../../context/SiteDataContext';
 import { Clock } from 'lucide-react';
 
 interface ScheduleStatusBadgeProps {
@@ -8,15 +9,17 @@ interface ScheduleStatusBadgeProps {
 }
 
 export function ScheduleStatusBadge({ compact = false, className = '' }: ScheduleStatusBadgeProps) {
-  const [status, setStatus] = useState(() => isStudioOpenNow());
+  const { weeklySchedule } = useSiteData();
+  const [status, setStatus] = useState(() => isStudioOpenNow(new Date(), weeklySchedule));
 
   useEffect(() => {
+    setStatus(isStudioOpenNow(new Date(), weeklySchedule));
     // Check every 30 seconds to keep live status accurate
     const interval = setInterval(() => {
-      setStatus(isStudioOpenNow());
+      setStatus(isStudioOpenNow(new Date(), weeklySchedule));
     }, 30000);
     return () => clearInterval(interval);
-  }, []);
+  }, [weeklySchedule]);
 
   if (compact) {
     return (
