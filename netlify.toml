@@ -3,7 +3,12 @@
   command = "pnpm run build"
 
 [[redirects]]
+  from = "/api/send-email"
+  to = "https://yvlpfkrppzundpluvubk.supabase.co/functions/v1/send-email"
+  status = 200
+  force = true
+
+[[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
-

@@ -93,7 +93,7 @@ export function NahoLoginPage() {
   const { navigateTo } = useSiteData();
 
   const rawEnvEmail = (import.meta.env.VITE_ADMIN_EMAIL || '').trim();
-  const rawEnvPassword = (import.meta.env.VITE_ADMIN_PASSWORD || '').trim();
+  const customPasswordHash = (import.meta.env.VITE_ADMIN_PASSWORD_HASH || '').trim().toLowerCase();
   const expectedEmail = rawEnvEmail || 'Centrodearte@nahocraft.com';
 
   const [email, setEmail] = useState('');
@@ -174,12 +174,9 @@ export function NahoLoginPage() {
     const trimmedPass = password.trim();
     const inputHash = await computeSha256Hex(trimmedPass);
 
-    // Check against custom env password (if set) or SHA-256 hash
-    const isValidPassword =
-      inputHash === DEFAULT_PASSWORD_SHA256 ||
-      (rawEnvPassword.length > 0 &&
-        rawEnvPassword !== 'Naho12' &&
-        (password === rawEnvPassword || trimmedPass === rawEnvPassword));
+    // Validación segura mediante hash SHA-256 (nunca compara ni expone contraseñas en texto plano)
+    const targetHash = customPasswordHash || DEFAULT_PASSWORD_SHA256;
+    const isValidPassword = inputHash === targetHash;
 
     if (isValidEmail && isValidPassword) {
       saveLockoutState({
