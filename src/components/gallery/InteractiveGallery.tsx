@@ -3,6 +3,7 @@ import { useSiteData } from '../../context/SiteDataContext';
 import { CategoryId, PortfolioItem } from '../../types';
 import { CategoryFilter } from './CategoryFilter';
 import { ImageLightbox } from './ImageLightbox';
+import { ScrollReveal } from '../common/ScrollReveal';
 import { Eye, Sparkles, ArrowUpRight, MapPin, Palette } from 'lucide-react';
 
 interface InteractiveGalleryProps {
@@ -49,7 +50,7 @@ export function InteractiveGallery({ onSelectForQuote }: InteractiveGalleryProps
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Section Header */}
-        <div className="text-center max-w-3xl mx-auto mb-12">
+        <ScrollReveal variant="up" className="text-center max-w-3xl mx-auto mb-12">
           <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider bg-black/[0.03] text-neutral-700 border border-black/[0.06] mb-4">
             <Sparkles className="w-3.5 h-3.5 text-naho-pink" />
             Portafolio de Murales por Categoría
@@ -74,25 +75,28 @@ export function InteractiveGallery({ onSelectForQuote }: InteractiveGalleryProps
               Negocio • Casa • Decoración Interior & Exterior
             </span>
           </div>
-        </div>
+        </ScrollReveal>
 
         {/* Category Filter */}
-        <CategoryFilter
-          categories={muralCategories}
-          activeCategory={activeCategory}
-          onSelectCategory={(cat) => {
-            setActiveCategory(cat);
-            setSelectedLightboxIndex(null);
-          }}
-          counts={counts}
-        />
+        <ScrollReveal variant="up" delay={90}>
+          <CategoryFilter
+            categories={muralCategories}
+            activeCategory={activeCategory}
+            onSelectCategory={(cat) => {
+              setActiveCategory(cat);
+              setSelectedLightboxIndex(null);
+            }}
+            counts={counts}
+          />
+        </ScrollReveal>
 
         {/* Mural Bento Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-7 mt-12">
           {filteredItems.map((item, index) => (
             <article
-              key={item.id}
-              className="apple-card rounded-[2.5rem] overflow-hidden flex flex-col justify-between group transition-all duration-500 hover:-translate-y-2 glow-mural"
+              key={`${activeCategory}-${item.id}`}
+              style={{ animationDelay: `${Math.min(index * 75, 360)}ms` }}
+              className="animate-card-stagger apple-card rounded-[2.5rem] overflow-hidden flex flex-col justify-between group transition-all duration-500 hover:-translate-y-2 glow-mural"
             >
               {/* Image Wrap */}
               <div

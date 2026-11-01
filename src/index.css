@@ -13,7 +13,17 @@
   --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
 }
 
+:root {
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-spring: cubic-bezier(0.175, 0.885, 0.32, 1.16);
+}
+
 @layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
   body {
     background-color: var(--color-naho-bg);
     color: #1d1d1f;
@@ -51,12 +61,15 @@
   background: #ffffff;
   border: 1px solid rgba(0, 0, 0, 0.05);
   box-shadow: 0 4px 24px -2px rgba(0, 0, 0, 0.03), 0 1px 3px rgba(0, 0, 0, 0.02);
-  transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+  transition:
+    transform 0.45s var(--ease-out-expo),
+    box-shadow 0.45s var(--ease-out-expo),
+    border-color 0.3s ease;
 }
 
 .apple-card:hover {
-  box-shadow: 0 20px 45px -8px rgba(0, 0, 0, 0.08), 0 4px 10px -2px rgba(0, 0, 0, 0.02);
-  transform: translateY(-2px);
+  box-shadow: 0 22px 48px -10px rgba(0, 0, 0, 0.09), 0 4px 12px -2px rgba(0, 0, 0, 0.03);
+  transform: translateY(-3px);
 }
 
 .apple-card-static {
@@ -74,7 +87,7 @@
 .apple-input {
   border: 1px solid rgba(0, 0, 0, 0.08);
   background: rgba(0, 0, 0, 0.02);
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.25s var(--ease-out-expo);
 }
 
 .apple-input:focus {
@@ -90,7 +103,7 @@
 
 .apple-button-glow {
   box-shadow: 0 8px 24px -6px rgba(254, 55, 112, 0.35);
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.25s var(--ease-out-expo);
 }
 
 .apple-button-glow:hover {
@@ -116,6 +129,193 @@
 }
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(0, 0, 0, 0.25);
+}
+
+/* ==========================================================================
+   SCROLL-TRIGGERED REVEAL SYSTEM (IntersectionObserver + GPU 3D Transforms)
+   ========================================================================== */
+.scroll-reveal-base {
+  opacity: 0;
+  will-change: transform, opacity;
+  transition-property: transform, opacity, filter;
+  transition-timing-function: var(--ease-out-expo);
+}
+
+.reveal-from-up {
+  transform: translate3d(0, 28px, 0);
+}
+
+.reveal-from-left {
+  transform: translate3d(-28px, 0, 0);
+}
+
+.reveal-from-right {
+  transform: translate3d(28px, 0, 0);
+}
+
+.reveal-from-scale {
+  transform: translate3d(0, 18px, 0) scale(0.96);
+}
+
+.reveal-from-blur {
+  transform: translate3d(0, 20px, 0);
+  filter: blur(6px);
+}
+
+.scroll-reveal-visible {
+  opacity: 1;
+  transform: translate3d(0, 0, 0) scale(1);
+  filter: blur(0px);
+}
+
+/* ==========================================================================
+   HERO ENTRANCE CHOREOGRAPHY & DIRECTIONAL STEP TRANSITIONS
+   ========================================================================== */
+@keyframes hero-enter-up {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 24px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes hero-enter-scale {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 20px, 0) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes step-enter-forward {
+  from {
+    opacity: 0;
+    transform: translate3d(22px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes step-enter-backward {
+  from {
+    opacity: 0;
+    transform: translate3d(-22px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes card-stagger-enter {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 22px, 0) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+}
+
+@keyframes select-pop {
+  0% {
+    transform: scale(0.97);
+  }
+  60% {
+    transform: scale(1.015);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes shimmer-sweep {
+  0% {
+    transform: translateX(-120%) skewX(-18deg);
+  }
+  100% {
+    transform: translateX(220%) skewX(-18deg);
+  }
+}
+
+.animate-hero-1 {
+  animation: hero-enter-up 0.65s var(--ease-out-expo) 0.04s both;
+}
+.animate-hero-2 {
+  animation: hero-enter-up 0.7s var(--ease-out-expo) 0.12s both;
+}
+.animate-hero-3 {
+  animation: hero-enter-up 0.7s var(--ease-out-expo) 0.2s both;
+}
+.animate-hero-4 {
+  animation: hero-enter-up 0.7s var(--ease-out-expo) 0.28s both;
+}
+.animate-hero-5 {
+  animation: hero-enter-up 0.7s var(--ease-out-expo) 0.36s both;
+}
+.animate-hero-visual {
+  animation: hero-enter-scale 0.85s var(--ease-out-expo) 0.18s both;
+}
+
+.animate-step-forward {
+  animation: step-enter-forward 0.38s var(--ease-out-expo) both;
+}
+
+.animate-step-backward {
+  animation: step-enter-backward 0.38s var(--ease-out-expo) both;
+}
+
+.animate-card-stagger {
+  animation: card-stagger-enter 0.5s var(--ease-out-expo) both;
+}
+
+.animate-select-pop {
+  animation: select-pop 0.28s var(--ease-spring);
+}
+
+/* Interactive Shimmer CTA Button */
+.btn-shimmer {
+  position: relative;
+  overflow: hidden;
+}
+
+.btn-shimmer::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 45%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.22),
+    transparent
+  );
+  transform: translateX(-140%) skewX(-18deg);
+  pointer-events: none;
+}
+
+.btn-shimmer:hover::after {
+  animation: shimmer-sweep 0.75s var(--ease-out-quart);
+}
+
+/* Micro-interaction on cards with icons */
+.pillar-card-hover .pillar-icon {
+  transition: transform 0.35s var(--ease-spring);
+}
+
+.pillar-card-hover:hover .pillar-icon {
+  transform: scale(1.12) rotate(-6deg);
 }
 
 /* Artistic & Organic Motion Animations */
@@ -251,3 +451,20 @@ dialog::backdrop {
   gap: 0.35rem;
 }
 
+/* Accessibility: Respect user reduced-motion preferences */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .scroll-reveal-base {
+    opacity: 1 !important;
+    transform: none !important;
+    filter: none !important;
+  }
+}

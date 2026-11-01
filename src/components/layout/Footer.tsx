@@ -2,10 +2,10 @@ import { localAssets } from '../../assets';
 import { useSiteData } from '../../context/SiteDataContext';
 import { SocialLinks } from '../studio/SocialLinks';
 import { ScheduleStatusBadge } from './ScheduleStatusBadge';
-import { MapPin, Phone, Sparkles, Mail, Lock } from 'lucide-react';
+import { MapPin, Phone, Sparkles, Mail } from 'lucide-react';
 
 export function Footer() {
-  const { siteConfig, navigateTo } = useSiteData();
+  const { siteConfig } = useSiteData();
 
   return (
     <footer className="bg-slate-950 text-white pt-16 pb-12 border-t border-slate-900 relative overflow-hidden">
@@ -104,19 +104,11 @@ export function Footer() {
           </div>
         </div>
 
-        {/* Bottom Credits & Discreet Admin Link */}
-        <div className="pt-8 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500">
+        {/* Bottom Credits */}
+        <div className="pt-8 flex flex-col sm:flex-row items-center justify-center sm:justify-between gap-4 text-xs text-slate-500 text-center sm:text-left">
           <p>
             © {new Date().getFullYear()} Nahocraft - Centro de Arte ({siteConfig.adminEmail}). Todos los derechos reservados.
           </p>
-          <button
-            type="button"
-            onClick={() => navigateTo('/naho')}
-            className="inline-flex items-center gap-1.5 text-slate-600 hover:text-slate-400 transition-colors cursor-pointer"
-          >
-            <Lock className="w-3 h-3" />
-            <span>Acceso Naho (/naho)</span>
-          </button>
         </div>
       </div>
     </footer>

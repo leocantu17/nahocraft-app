@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useSiteData } from '../../context/SiteDataContext';
 import { CourseItem, CourseEnrollment } from '../../types';
 import { CourseCheckoutModal } from './CourseCheckoutModal';
+import { ScrollReveal } from '../common/ScrollReveal';
 import {
   Calendar,
   Users,
@@ -145,7 +146,7 @@ export function CoursesSection() {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         {/* Section Header */}
-        <div className="text-center max-w-3xl mx-auto mb-12">
+        <ScrollReveal variant="up" className="text-center max-w-3xl mx-auto mb-12">
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-white border border-black/[0.08] text-neutral-900 shadow-2xs mb-4">
             <span className="w-2 h-2 rounded-full bg-naho-pink animate-ping" />
             Calendario Mensual de Cursos & Talleres
@@ -177,20 +178,20 @@ export function CoursesSection() {
                 setAccessError(null);
                 setShowAccessModal(true);
               }}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-neutral-950 hover:bg-naho-pink text-white font-bold shadow-xs transition-colors cursor-pointer"
+              className="btn-shimmer inline-flex items-center gap-1.5 px-4 py-2 rounded-full bg-neutral-950 hover:bg-naho-pink text-white font-bold shadow-xs transition-colors cursor-pointer"
             >
               <KeyRound className="w-3.5 h-3.5 text-naho-yellow" />
               <span>¿Ya tienes boleto? Entrar a mi Clase</span>
             </button>
           </div>
-        </div>
+        </ScrollReveal>
 
         {/* Month Filter Segmented Control */}
-        <div className="flex justify-center mb-12">
+        <ScrollReveal variant="up" delay={80} className="flex justify-center mb-12">
           <div
             role="tablist"
             aria-label="Filtrar cursos por mes"
-            className="inline-flex flex-wrap items-center justify-center gap-1.5 p-1.5 rounded-full bg-black/[0.04] border border-black/[0.05]"
+            className="inline-flex flex-wrap items-center justify-center gap-1.5 p-1.5 rounded-2xl sm:rounded-full bg-black/[0.04] border border-black/[0.05]"
           >
             {monthTabs.map((month) => {
               const isSelected = selectedMonth === month;
@@ -201,10 +202,10 @@ export function CoursesSection() {
                   role="tab"
                   aria-selected={isSelected}
                   onClick={() => setSelectedMonth(month)}
-                  className={`px-5 py-2 rounded-full text-xs sm:text-sm font-bold transition-all cursor-pointer ${
+                  className={`px-4 sm:px-5 py-2 rounded-xl sm:rounded-full text-xs sm:text-sm font-bold transition-all cursor-pointer ${
                     isSelected
                       ? 'bg-neutral-950 text-white shadow-sm'
-                      : 'text-neutral-600 hover:text-neutral-950 hover:bg-white/60'
+                      : 'text-neutral-600 hover:text-neutral-900 hover:bg-white/60'
                   }`}
                 >
                   {month === 'all' ? 'Todos los Cursos del Mes' : month}
@@ -212,11 +213,11 @@ export function CoursesSection() {
               );
             })}
           </div>
-        </div>
+        </ScrollReveal>
 
         {/* Courses Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {filteredCourses.map((course) => {
+          {filteredCourses.map((course, idx) => {
             const remainingSpots = Math.max(0, course.maxSpots - course.enrolledCount);
             const isSoldOut = remainingSpots === 0;
             const deadlineInfo = getDeadlineStatus(course.registrationDeadline, now);
@@ -234,8 +235,9 @@ export function CoursesSection() {
 
             return (
               <article
-                key={course.id}
-                className={`apple-card rounded-[2.5rem] overflow-hidden flex flex-col justify-between transition-all duration-500 ${
+                key={`${selectedMonth}-${course.id}`}
+                style={{ animationDelay: `${Math.min(idx * 90, 360)}ms` }}
+                className={`animate-card-stagger apple-card rounded-[2.5rem] overflow-hidden flex flex-col justify-between transition-all duration-500 ${
                   course.featured
                     ? 'ring-2 ring-naho-pink/50 shadow-[0_24px_60px_rgba(254,55,112,0.12)]'
                     : ''
@@ -406,7 +408,7 @@ export function CoursesSection() {
                     className={`px-5 py-3 rounded-full font-bold text-xs flex items-center gap-2 transition-all cursor-pointer active:scale-95 ${
                       isClosed
                         ? 'bg-neutral-200 text-neutral-500 cursor-not-allowed'
-                        : 'bg-neutral-950 hover:bg-naho-pink text-white shadow-md'
+                        : 'btn-shimmer bg-neutral-950 hover:bg-naho-pink text-white shadow-md'
                     }`}
                   >
                     {isClosed ? (

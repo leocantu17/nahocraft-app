@@ -17,14 +17,16 @@ const EMAIL_AUDIT_LOG_KEY = 'nahocraft_sent_emails_audit_log';
 
 /**
  * Despacha un correo electrónico estructurado.
- * Si existe una ruta backend configurada (ej. VITE_EMAIL_API_ENDPOINT o /api/send-email),
- * realiza la petición POST con el payload. De lo contrario, emite el evento en consola y
- * registra en el historial local de auditoría.
+ * Utiliza VITE_EMAIL_API_ENDPOINT si está definido, o la ruta proxy/rewrite `/api/send-email`
+ * configurada tanto en Vite (desarrollo) como en Vercel / Netlify (producción).
+ * Si el backend no está activo en local, registra en el historial local de auditoría sin romper el flujo.
  */
 export async function dispatchEmailPayload(payload: EmailPayload): Promise<EmailDispatchResult> {
   const messageId = `msg_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-  const customEndpoint = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_EMAIL_API_ENDPOINT) as string | undefined;
-  const endpoint = customEndpoint || (typeof window !== 'undefined' && window.location.hostname === 'localhost' ? '/api/send-email' : undefined);
+  const customEndpoint = (
+    typeof import.meta !== 'undefined' && import.meta.env?.VITE_EMAIL_API_ENDPOINT
+  ) as string | undefined;
+  const endpoint = customEndpoint || (typeof window !== 'undefined' ? '/api/send-email' : undefined);
 
   // Si existe endpoint de backend conectado
   if (endpoint) {
@@ -50,16 +52,7 @@ export async function dispatchEmailPayload(payload: EmailPayload): Promise<Email
         mode: 'live_backend',
       };
     } catch (err: unknown) {
-      console.error('[Nahocraft Email Backend Error]:', err);
-      // Fallback a simulación para no romper la experiencia
-      return {
-        success: false,
-        messageId,
-        recipient: payload.to,
-        dispatchedAt: new Date().toISOString(),
-        mode: 'live_backend',
-        error: err instanceof Error ? err.message : String(err),
-      };
+      console.warn('[Nahocraft Email Backend]: Usando modo respaldo local:', err);
     }
   }
 

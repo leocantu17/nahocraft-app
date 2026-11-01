@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useSiteData } from '../../context/SiteDataContext';
 import { ScheduleCard } from './ScheduleCard';
 import { SocialLinks } from './SocialLinks';
+import { ScrollReveal } from '../common/ScrollReveal';
 import {
   MapPin,
   Navigation,
@@ -37,7 +38,7 @@ export function StudioLocation() {
     <section id="estudio" className="py-24 md:py-32 bg-[#F6F6F5] relative overflow-hidden">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Section Header */}
-        <div className="text-center max-w-3xl mx-auto mb-16">
+        <ScrollReveal variant="up" className="text-center max-w-3xl mx-auto mb-16">
           <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-[11px] font-bold uppercase tracking-wider bg-black/[0.03] text-neutral-700 border border-black/[0.06] mb-4">
             <Compass className="w-3.5 h-3.5 text-naho-pink" />
             Taller Físico en Tampico • Niños, Adolescentes y Adultos
@@ -52,11 +53,11 @@ export function StudioLocation() {
             Además de nuestros cursos en línea, contamos con nuestro propio estudio físico en la colonia Minerva en Tampico, donde Nahomy imparte clases presenciales para{' '}
             <strong>niños, adolescentes y adultos</strong>.
           </p>
-        </div>
+        </ScrollReveal>
 
         {/* SUB-SECTION 1: Clases Presenciales para Niños, Adolescentes y Adultos */}
         <div className="mb-20">
-          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-8">
+          <ScrollReveal variant="up" className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-8">
             <div>
               <span className="inline-flex items-center gap-1.5 text-xs font-mono uppercase tracking-wider text-naho-pink font-bold">
                 <GraduationCap className="w-4 h-4" />
@@ -69,7 +70,7 @@ export function StudioLocation() {
             <p className="text-xs sm:text-sm text-neutral-500 max-w-md">
               Grupos reducidos con atención personalizada en nuestro taller de Av. Ayuntamiento 3 - 109, Col. Minerva.
             </p>
-          </div>
+          </ScrollReveal>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-7">
             {inPersonClasses.map((prog, idx) => {
@@ -85,70 +86,69 @@ export function StudioLocation() {
               ];
 
               return (
-                <article
-                  key={prog.id}
-                  className="apple-card rounded-[2.25rem] p-7 flex flex-col justify-between border border-black/[0.06]"
-                >
-                  <div className="space-y-4">
-                    <div className="flex items-center justify-between gap-2">
-                      <span
-                        className={`px-3 py-1 rounded-full text-[11px] font-extrabold uppercase tracking-wider border ${
-                          badgeColors[idx % badgeColors.length]
-                        }`}
+                <ScrollReveal key={prog.id} variant="up" delay={idx * 90}>
+                  <article className="h-full apple-card rounded-[2.25rem] p-7 flex flex-col justify-between border border-black/[0.06]">
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between gap-2">
+                        <span
+                          className={`px-3 py-1 rounded-full text-[11px] font-extrabold uppercase tracking-wider border ${
+                            badgeColors[idx % badgeColors.length]
+                          }`}
+                        >
+                          {prog.audience} • {prog.ageRange}
+                        </span>
+                        <Users className="w-4 h-4 text-neutral-400" />
+                      </div>
+
+                      <div>
+                        <h4 className="font-extrabold text-xl text-neutral-900 tracking-tight leading-snug">
+                          {prog.title}
+                        </h4>
+                        <p className="mt-2 text-xs sm:text-sm text-neutral-600 leading-relaxed">
+                          {prog.description}
+                        </p>
+                      </div>
+
+                      <div className="p-3.5 rounded-2xl bg-neutral-50 border border-black/[0.05] text-xs">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 block mb-0.5">
+                          Horarios y Sesiones:
+                        </span>
+                        <span className="font-semibold text-neutral-800">{prog.scheduleSummary}</span>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 block">
+                          Lo que practicamos en el taller:
+                        </span>
+                        <ul className="grid grid-cols-1 gap-1.5">
+                          {prog.techniques.map((tech, tIdx) => (
+                            <li key={tIdx} className="flex items-center gap-2 text-xs text-neutral-700">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                              <span>{tech}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+
+                    <div className="mt-6 pt-4 border-t border-black/[0.06] flex items-center justify-between gap-3">
+                      <span className="text-[11px] font-semibold text-neutral-500">
+                        {prog.priceInfo}
+                      </span>
+                      <a
+                        href={`mailto:${siteConfig.adminEmail}?subject=${encodeURIComponent(
+                          `Informes sobre clases presenciales para ${prog.audience}`
+                        )}`}
+                        className={`btn-shimmer px-4 py-2.5 rounded-full bg-gradient-to-r ${
+                          accentColors[idx % accentColors.length]
+                        } text-white font-bold text-xs inline-flex items-center gap-1.5 shadow-sm hover:opacity-95 transition-all active:scale-95`}
                       >
-                        {prog.audience} • {prog.ageRange}
-                      </span>
-                      <Users className="w-4 h-4 text-neutral-400" />
+                        <Mail className="w-3.5 h-3.5" />
+                        <span>Pedir Informes</span>
+                      </a>
                     </div>
-
-                    <div>
-                      <h4 className="font-extrabold text-xl text-neutral-900 tracking-tight leading-snug">
-                        {prog.title}
-                      </h4>
-                      <p className="mt-2 text-xs sm:text-sm text-neutral-600 leading-relaxed">
-                        {prog.description}
-                      </p>
-                    </div>
-
-                    <div className="p-3.5 rounded-2xl bg-neutral-50 border border-black/[0.05] text-xs">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 block mb-0.5">
-                        Horarios y Sesiones:
-                      </span>
-                      <span className="font-semibold text-neutral-800">{prog.scheduleSummary}</span>
-                    </div>
-
-                    <div className="space-y-1.5">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-neutral-400 block">
-                        Lo que practicamos en el taller:
-                      </span>
-                      <ul className="grid grid-cols-1 gap-1.5">
-                        {prog.techniques.map((tech, tIdx) => (
-                          <li key={tIdx} className="flex items-center gap-2 text-xs text-neutral-700">
-                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                            <span>{tech}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  </div>
-
-                  <div className="mt-6 pt-4 border-t border-black/[0.06] flex items-center justify-between gap-3">
-                    <span className="text-[11px] font-semibold text-neutral-500">
-                      {prog.priceInfo}
-                    </span>
-                    <a
-                      href={`mailto:${siteConfig.adminEmail}?subject=${encodeURIComponent(
-                        `Informes sobre clases presenciales para ${prog.audience}`
-                      )}`}
-                      className={`px-4 py-2.5 rounded-full bg-gradient-to-r ${
-                        accentColors[idx % accentColors.length]
-                      } text-white font-bold text-xs inline-flex items-center gap-1.5 shadow-sm hover:opacity-95 transition-all active:scale-95`}
-                    >
-                      <Mail className="w-3.5 h-3.5" />
-                      <span>Pedir Informes</span>
-                    </a>
-                  </div>
-                </article>
+                  </article>
+                </ScrollReveal>
               );
             })}
           </div>
@@ -157,7 +157,7 @@ export function StudioLocation() {
         {/* SUB-SECTION 2: Galería de Fotos del Taller Físico ("Conoce Cómo se Ve el Taller") */}
         {studioPhotos.length > 0 && (
           <div className="mb-20">
-            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-8">
+            <ScrollReveal variant="up" className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-8">
               <div>
                 <span className="inline-flex items-center gap-1.5 text-xs font-mono uppercase tracking-wider text-naho-blue font-bold">
                   <Camera className="w-4 h-4" />
@@ -170,33 +170,32 @@ export function StudioLocation() {
               <p className="text-xs sm:text-sm text-neutral-500 max-w-md">
                 Un vistazo al lugar donde pintamos, aprendemos y creamos en Tampico.
               </p>
-            </div>
+            </ScrollReveal>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              {studioPhotos.map((photo) => (
-                <div
-                  key={photo.id}
-                  className="apple-card rounded-[2rem] overflow-hidden group border border-black/[0.06]"
-                >
-                  <div className="relative aspect-[4/3] bg-neutral-100 overflow-hidden">
-                    <img
-                      src={photo.image}
-                      alt={photo.title}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
-                    />
-                    <span className="absolute top-3.5 left-3.5 apple-glass px-3 py-1 rounded-full text-[11px] font-bold text-neutral-900">
-                      {photo.tag}
-                    </span>
+              {studioPhotos.map((photo, idx) => (
+                <ScrollReveal key={photo.id} variant="scale" delay={idx * 85}>
+                  <div className="h-full apple-card rounded-[2rem] overflow-hidden group border border-black/[0.06]">
+                    <div className="relative aspect-[4/3] bg-neutral-100 overflow-hidden">
+                      <img
+                        src={photo.image}
+                        alt={photo.title}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
+                      />
+                      <span className="absolute top-3.5 left-3.5 apple-glass px-3 py-1 rounded-full text-[11px] font-bold text-neutral-900">
+                        {photo.tag}
+                      </span>
+                    </div>
+                    <div className="p-5">
+                      <h4 className="font-extrabold text-base text-neutral-900 tracking-tight">
+                        {photo.title}
+                      </h4>
+                      <p className="text-xs text-neutral-500 mt-1 leading-relaxed">
+                        {photo.caption}
+                      </p>
+                    </div>
                   </div>
-                  <div className="p-5">
-                    <h4 className="font-extrabold text-base text-neutral-900 tracking-tight">
-                      {photo.title}
-                    </h4>
-                    <p className="text-xs text-neutral-500 mt-1 leading-relaxed">
-                      {photo.caption}
-                    </p>
-                  </div>
-                </div>
+                </ScrollReveal>
               ))}
             </div>
           </div>
@@ -205,8 +204,8 @@ export function StudioLocation() {
         {/* SUB-SECTION 3: Ubicación, Mapas y Horarios */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
           {/* Left Column: Location & Map info */}
-          <div id="ubicacion" className="lg:col-span-6 space-y-6">
-            <div className="apple-card rounded-[2.5rem] p-7 sm:p-9">
+          <ScrollReveal variant="left" className="lg:col-span-6 space-y-6">
+            <div id="ubicacion" className="apple-card rounded-[2.5rem] p-7 sm:p-9">
               <div className="flex items-start justify-between gap-4 mb-6">
                 <div className="flex items-center gap-3">
                   <div className="p-3 rounded-2xl bg-black/[0.04] text-neutral-800">
@@ -323,12 +322,12 @@ export function StudioLocation() {
               </p>
               <SocialLinks layout="grid" />
             </div>
-          </div>
+          </ScrollReveal>
 
           {/* Right Column: Schedule Card */}
-          <div className="lg:col-span-6">
+          <ScrollReveal variant="right" delay={120} className="lg:col-span-6">
             <ScheduleCard />
-          </div>
+          </ScrollReveal>
         </div>
       </div>
     </section>

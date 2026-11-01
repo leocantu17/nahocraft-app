@@ -24,11 +24,15 @@ export default defineConfig(({ mode }) => {
       // evitando problemas de CORS y centralizando el endpoint de despacho
       proxy: {
         '/api/send-email': {
-          target: env.VITE_EMAIL_API_ENDPOINT || 'http://localhost:54321/functions/v1/send-email',
+          target:
+            env.VITE_EMAIL_API_ENDPOINT ||
+            (env.VITE_SUPABASE_URL
+              ? `${env.VITE_SUPABASE_URL.replace(/\/+$/, '')}/functions/v1/send-email`
+              : 'http://localhost:54321/functions/v1/send-email'),
           changeOrigin: true,
           secure: true,
           rewrite: (pathStr) => {
-            if (env.VITE_EMAIL_API_ENDPOINT) {
+            if (env.VITE_EMAIL_API_ENDPOINT || env.VITE_SUPABASE_URL) {
               return '';
             }
             return pathStr;

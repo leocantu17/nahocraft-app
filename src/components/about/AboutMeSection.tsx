@@ -1,4 +1,5 @@
 import { useSiteData } from '../../context/SiteDataContext';
+import { ScrollReveal } from '../common/ScrollReveal';
 import { Sparkles, Quote, Palette, GraduationCap, MapPin, ArrowUpRight } from 'lucide-react';
 
 export function AboutMeSection() {
@@ -13,17 +14,17 @@ export function AboutMeSection() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-16 items-center">
           {/* Left Column: Editorial Portrait & Studio Composition (Fernanda Gómez Arte style) */}
-          <div className="lg:col-span-5">
+          <ScrollReveal variant="left" className="lg:col-span-5">
             <div className="relative mx-auto max-w-md lg:max-w-none">
               {/* Decorative offset frame */}
-              <div className="absolute -inset-3 rounded-[2.75rem] bg-gradient-to-tr from-naho-pink/20 via-naho-orange/15 to-naho-blue/20 blur-xl -z-10" />
+              <div className="absolute -inset-3 rounded-[2.75rem] bg-gradient-to-tr from-naho-pink/20 via-naho-orange/15 to-naho-blue/20 blur-xl -z-10 animate-pulse-glow" />
 
-              <div className="apple-card-static rounded-[2.5rem] p-3.5 sm:p-4 border border-black/[0.08] shadow-[0_24px_60px_rgba(0,0,0,0.09)]">
+              <div className="apple-card-static rounded-[2.5rem] p-3.5 sm:p-4 border border-black/[0.08] shadow-[0_24px_60px_rgba(0,0,0,0.09)] group">
                 <div className="relative aspect-[4/5] rounded-[2rem] overflow-hidden bg-neutral-100">
                   <img
                     src={aboutMe.portraitImage}
                     alt={aboutMe.title}
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out"
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-transparent to-transparent" />
 
@@ -45,7 +46,7 @@ export function AboutMeSection() {
 
               {/* Floating Studio Seal */}
               {aboutMe.secondaryImage && (
-                <div className="absolute -bottom-6 -right-3 sm:-right-5 bg-white rounded-2xl p-2.5 shadow-xl border border-black/[0.08] flex items-center gap-3">
+                <div className="absolute -bottom-6 -right-3 sm:-right-5 bg-white rounded-2xl p-2.5 shadow-xl border border-black/[0.08] flex items-center gap-3 animate-float-slow">
                   <img
                     src={aboutMe.secondaryImage}
                     alt="Sello Nahocraft"
@@ -62,10 +63,10 @@ export function AboutMeSection() {
                 </div>
               )}
             </div>
-          </div>
+          </ScrollReveal>
 
           {/* Right Column: Biography, Philosophy Quote & Pillars */}
-          <div className="lg:col-span-7 space-y-7">
+          <ScrollReveal variant="right" delay={120} className="lg:col-span-7 space-y-7">
             <div>
               <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full text-[11px] font-bold uppercase tracking-wider bg-naho-pink/[0.08] text-naho-pink border border-naho-pink/20 mb-4">
                 <Sparkles className="w-3.5 h-3.5" />
@@ -80,8 +81,8 @@ export function AboutMeSection() {
               </p>
             </div>
 
-            {/* Philosophy Quote Card (inspired by fernandagomezarte.com "Cada obra nace de una emoción") */}
-            <blockquote className="p-6 rounded-3xl bg-neutral-950 text-white relative overflow-hidden shadow-lg">
+            {/* Philosophy Quote Card */}
+            <blockquote className="p-6 rounded-3xl bg-neutral-950 text-white relative overflow-hidden shadow-lg transition-transform duration-500 hover:-translate-y-1">
               <Quote className="w-10 h-10 text-naho-pink/25 absolute top-4 right-5 pointer-events-none" />
               <p className="text-sm sm:text-base font-medium italic leading-relaxed text-neutral-100 relative z-10">
                 {aboutMe.philosophyQuote}
@@ -106,9 +107,9 @@ export function AboutMeSection() {
                 return (
                   <div
                     key={item.id}
-                    className="p-4 rounded-2xl bg-neutral-50 border border-black/[0.06] space-y-2"
+                    className="pillar-card-hover p-4 rounded-2xl bg-neutral-50 hover:bg-white border border-black/[0.06] hover:shadow-md transition-all duration-300 space-y-2"
                   >
-                    <div className="w-8 h-8 rounded-xl bg-white border border-black/[0.06] flex items-center justify-center text-naho-pink shadow-2xs">
+                    <div className="pillar-icon w-8 h-8 rounded-xl bg-white border border-black/[0.06] flex items-center justify-center text-naho-pink shadow-2xs">
                       <Icon className="w-4 h-4" />
                     </div>
                     <h3 className="font-extrabold text-sm text-neutral-900 tracking-tight">
@@ -126,7 +127,7 @@ export function AboutMeSection() {
             <div className="pt-2 flex flex-wrap items-center gap-3">
               <a
                 href="#cursos"
-                className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-neutral-950 hover:bg-neutral-800 text-white font-bold text-xs shadow-sm transition-all active:scale-95"
+                className="btn-shimmer inline-flex items-center gap-2 px-6 py-3 rounded-full bg-neutral-950 hover:bg-neutral-800 text-white font-bold text-xs shadow-sm transition-all active:scale-95"
               >
                 <span>Ver Cursos del Mes</span>
                 <ArrowUpRight className="w-4 h-4 text-neutral-400" />
@@ -138,7 +139,7 @@ export function AboutMeSection() {
                 <span>Solicitar un Mural Personalizado</span>
               </a>
             </div>
-          </div>
+          </ScrollReveal>
         </div>
       </div>
     </section>
