@@ -9,6 +9,7 @@ import { LiveSummary } from './LiveSummary';
 import confetti from 'canvas-confetti';
 import { sendClientQuoteConfirmation, sendStudioQuoteNotification } from '../../emails';
 import { compressImageFile } from '../../utils/imageCompressor';
+import { sanitizeText, checkSubmissionCooldown, recordSubmission } from '../../utils/security';
 import {
   Palette,
   Building2,
@@ -70,6 +71,8 @@ export function QuoteStepperForm({
   const [createdTicket, setCreatedTicket] = useState<QuoteTicket | null>(null);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  const [honeypot, setHoneypot] = useState('');
+  const [cooldownError, setCooldownError] = useState<string | null>(null);
 
   // Accessibility IDs
   const customMuralTypeId = useId();
@@ -201,6 +204,19 @@ export function QuoteStepperForm({
   const handleSubmitQuote = () => {
     if (!isFormComplete) return;
 
+    // Protección Honeypot contra bots automatizados
+    if (honeypot.trim() !== '') {
+      return;
+    }
+
+    // Rate limiting: Cooldown de 20 segundos entre envíos sucesivos
+    const cooldown = checkSubmissionCooldown('quote', 20);
+    if (!cooldown.allowed) {
+      setCooldownError(`Por favor espera ${cooldown.remainingSeconds}s antes de enviar otra cotización.`);
+      return;
+    }
+    setCooldownError(null);
+
     const folioNumber = Math.floor(100 + Math.random() * 900);
     const formattedLoc = `${formData.cityZone}${formData.neighborhoodOrAddress ? ` • ${formData.neighborhoodOrAddress}` : ', Tamps.'
       }`;
@@ -208,6 +224,21 @@ export function QuoteStepperForm({
       formData.muralCategory === 'Otro tipo de mural' && formData.customMuralType?.trim()
         ? `Otro: ${formData.customMuralType.trim()}`
         : formData.muralCategory;
+
+    // Sanitización exhaustiva contra inyecciones XSS y datos maliciosos
+    const sanitizedData: QuoteFormData = {
+      ...formData,
+      clientName: sanitizeText(formData.clientName, 100),
+      clientEmail: sanitizeText(formData.clientEmail, 100),
+      clientPhone: sanitizeText(formData.clientPhone, 20),
+      neighborhoodOrAddress: sanitizeText(formData.neighborhoodOrAddress, 200),
+      themeAndDetails: sanitizeText(formData.themeAndDetails, 500),
+      clientNotes: sanitizeText(formData.clientNotes, 500),
+      customDimensions: sanitizeText(formData.customDimensions, 100),
+      customMuralType: sanitizeText(formData.customMuralType, 100),
+      muralCategory: resolvedCategory,
+      clientLocation: formattedLoc,
+    };
 
     const newTicket: QuoteTicket = {
       folio: `#MURAL-2026-${folioNumber}`,
@@ -219,14 +250,11 @@ export function QuoteStepperForm({
         minute: '2-digit',
       }),
       status: 'nuevo',
-      formData: {
-        ...formData,
-        muralCategory: resolvedCategory,
-        clientLocation: formattedLoc,
-      },
+      formData: sanitizedData,
       referenceArtTitle,
     };
 
+    recordSubmission('quote');
     addQuoteTicket(newTicket);
     setCreatedTicket(newTicket);
 
@@ -373,7 +401,28 @@ export function QuoteStepperForm({
 
         {/* Main Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-          <div className="lg:col-span-7 apple-card rounded-[2.5rem] p-7 sm:p-10 border border-black/[0.06] shadow-[0_20px_50px_rgba(0,0,0,0.04)]">
+          <div className="lg:col-span-7 apple-card rounded-[2.5rem] p-7 sm:p-10 border border-black/[0.06] shadow-[0_20px_50px_rgba(0,0,0,0.04)] relative">
+            {/* Campo Honeypot oculto para atrapar y bloquear bots automáticos de spam */}
+            <div className="opacity-0 absolute -left-[9999px] -top-[9999px] h-0 w-0 overflow-hidden pointer-events-none" aria-hidden="true">
+              <label htmlFor="quote-company-website">Empresa no llenar</label>
+              <input
+                id="quote-company-website"
+                type="text"
+                name="company_website"
+                tabIndex={-1}
+                value={honeypot}
+                onChange={(e) => setHoneypot(e.target.value)}
+                autoComplete="off"
+              />
+            </div>
+
+            {cooldownError && (
+              <div className="mb-6 p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-medium flex items-center gap-2">
+                <Lock className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>{cooldownError}</span>
+              </div>
+            )}
+
             {/* STEP 1: Tipo de Mural (+ "Otro tipo de mural") y Ubicación */}
             {currentStep === 1 && (
               <div className="space-y-7 animate-in fade-in duration-300">

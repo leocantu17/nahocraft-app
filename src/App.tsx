@@ -8,7 +8,7 @@ import { QuoteStepperForm } from './components/quote/QuoteStepperForm';
 import { AboutMeSection } from './components/about/AboutMeSection';
 import { StudioLocation } from './components/studio/StudioLocation';
 import { Footer } from './components/layout/Footer';
-import { NahoLoginPage } from './components/admin/NahoLoginPage';
+import { NahoLoginPage, isNahoAuthenticated } from './components/admin/NahoLoginPage';
 import { NahoGestionDashboard } from './components/admin/NahoGestionDashboard';
 import { NotFoundPage } from './components/common/NotFoundPage';
 
@@ -17,17 +17,23 @@ function AppRouter() {
   const [selectedMuralCategory, setSelectedMuralCategory] = useState<string>('Negocios & Comercial');
   const [referenceArtTitle, setReferenceArtTitle] = useState<string | undefined>(undefined);
 
-  // Route 1: /naho (Admin Login with 3-attempt IP lockout)
+  // Ruta 1: /naho (Login con bloqueo de IP tras 3 intentos)
   if (currentPath === '/naho') {
+    if (isNahoAuthenticated()) {
+      return <NahoGestionDashboard />;
+    }
     return <NahoLoginPage />;
   }
 
-  // Route 2: /naho/gestion (Full Admin Management Panel)
+  // Ruta 2: /naho/gestion (Panel con Auth Guard que bloquea URL si no hay sesión)
   if (currentPath === '/naho/gestion') {
+    if (!isNahoAuthenticated()) {
+      return <NahoLoginPage />;
+    }
     return <NahoGestionDashboard />;
   }
 
-  // Route 3: 404 Not Found (any unrecognized route)
+  // Ruta 3: 404 Not Found (Cualquier URL no reconocida)
   if (currentPath !== '/' && currentPath !== '') {
     return <NotFoundPage />;
   }

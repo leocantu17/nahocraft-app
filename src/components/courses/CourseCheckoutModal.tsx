@@ -3,6 +3,7 @@ import { CourseItem, CourseEnrollment } from '../../types';
 import { useSiteData } from '../../context/SiteDataContext';
 import confetti from 'canvas-confetti';
 import { sendStudentTicketEmail, sendStudioEnrollmentNotification } from '../../emails';
+import { sanitizeText, checkSubmissionCooldown, recordSubmission } from '../../utils/security';
 import {
   X,
   Calendar,
@@ -57,6 +58,7 @@ export function CourseCheckoutModal({ course, onClose }: CourseCheckoutModalProp
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [completedEnrollment, setCompletedEnrollment] = useState<CourseEnrollment | null>(null);
   const [copiedCode, setCopiedCode] = useState(false);
+  const [honeypot, setHoneypot] = useState('');
 
   // Close on Escape key
   useEffect(() => {
@@ -85,6 +87,19 @@ export function CourseCheckoutModal({ course, onClose }: CourseCheckoutModalProp
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setFormError(null);
+
+    // Detección Honeypot anti-spam
+    if (honeypot.trim() !== '') {
+      onClose();
+      return;
+    }
+
+    // Rate limiting / Cooldown de 20s
+    const cooldown = checkSubmissionCooldown('enrollment', 20);
+    if (!cooldown.allowed) {
+      setFormError(`Por favor espera ${cooldown.remainingSeconds}s antes de enviar otra inscripción.`);
+      return;
+    }
 
     const trimmedName = buyerName.trim();
     const trimmedEmail = buyerEmail.trim();
@@ -124,6 +139,11 @@ export function CourseCheckoutModal({ course, onClose }: CourseCheckoutModalProp
     const codeSuffix = Math.random().toString(36).substring(2, 6).toUpperCase();
     const accessCode = `NAHO-${codeSuffix}-${randomNum}`;
 
+    // Sanitización exhaustiva contra XSS / inyecciones
+    const sanitizedName = sanitizeText(trimmedName, 100);
+    const sanitizedEmail = sanitizeText(trimmedEmail, 100);
+    const sanitizedPhone = sanitizeText(buyerPhone.trim(), 20);
+
     const enrollment: CourseEnrollment = {
       id: `enr-${Date.now()}`,
       folio: `#CURSO-${randomNum}`,
@@ -134,9 +154,9 @@ export function CourseCheckoutModal({ course, onClose }: CourseCheckoutModalProp
       courseTimeDisplay: course.eventTimeDisplay,
       meetingLink: course.meetingLink,
       platformName: course.platformName,
-      buyerName: trimmedName,
-      buyerEmail: trimmedEmail,
-      buyerPhone: buyerPhone.trim(),
+      buyerName: sanitizedName,
+      buyerEmail: sanitizedEmail,
+      buyerPhone: sanitizedPhone,
       ticketsCount: 1,
       totalPaid: course.price,
       paymentMethod,
@@ -151,6 +171,7 @@ export function CourseCheckoutModal({ course, onClose }: CourseCheckoutModalProp
       emailSentToNaho: true,
     };
 
+    recordSubmission('enrollment');
     registerCourseEnrollment(enrollment);
     setCompletedEnrollment(enrollment);
     setIsSubmitting(false);
@@ -427,8 +448,22 @@ export function CourseCheckoutModal({ course, onClose }: CourseCheckoutModalProp
               <form
                 onSubmit={handleSubmit}
                 noValidate
-                className="lg:col-span-7 p-7 sm:p-10 flex flex-col justify-between space-y-6 bg-white"
+                className="lg:col-span-7 p-7 sm:p-10 flex flex-col justify-between space-y-6 bg-white relative"
               >
+                {/* Honeypot invisible para protección contra bots */}
+                <div className="opacity-0 absolute -left-[9999px] -top-[9999px] h-0 w-0 overflow-hidden pointer-events-none" aria-hidden="true">
+                  <label htmlFor="course-reg-hp">No llenar</label>
+                  <input
+                    id="course-reg-hp"
+                    type="text"
+                    name="reg_security_check"
+                    tabIndex={-1}
+                    value={honeypot}
+                    onChange={(e) => setHoneypot(e.target.value)}
+                    autoComplete="off"
+                  />
+                </div>
+
                 <div className="space-y-6">
                   <div>
                     <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-neutral-100 text-neutral-800 text-[11px] font-bold mb-2">

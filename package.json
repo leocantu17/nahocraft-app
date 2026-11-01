@@ -14,15 +14,17 @@
   "devEngines": {
     "packageManager": {
       "name": "pnpm",
-      "version": "11.23.0",
+      "version": "12.11.2",
       "onFail": "download"
     }
   },
-  "packageManager": "pnpm@11.23.0",
+  "packageManager": "pnpm@12.11.2",
   "type": "module",
   "dependencies": {
+    "@supabase/supabase-js": "^2.118.0",
     "canvas-confetti": "^1.9.4",
     "lucide-react": "^1.55.0",
+    "nodemailer": "^10.3.1",
     "react": "^19.3.0",
     "react-dom": "^19.3.0"
   },
@@ -30,6 +32,7 @@
     "@tailwindcss/vite": "^4.3.3",
     "@types/canvas-confetti": "^1.9.0",
     "@types/node": "^26.6.5",
+    "@types/nodemailer": "^8.0.2",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",

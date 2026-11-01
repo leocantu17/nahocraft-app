@@ -3,6 +3,19 @@
  * Compatible con clientes de escritorio (Outlook, Apple Mail) y web/móvil (Gmail, Yahoo, iOS Mail).
  */
 
+/**
+ * Escapa caracteres HTML especiales para prevenir inyecciones XSS / HTML en correos.
+ */
+export function escapeHtml(str: string | undefined | null): string {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 interface BaseLayoutProps {
   title: string;
   preheader: string;

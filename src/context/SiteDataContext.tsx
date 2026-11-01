@@ -23,6 +23,8 @@ import {
   INITIAL_COURSE_ENROLLMENTS,
 } from '../data/portfolioData';
 import { WEEKLY_SCHEDULE } from '../data/scheduleData';
+import { isSupabaseConfigured } from '../lib/conexion';
+import * as db from '../services/supabaseService';
 
 const STORAGE_KEYS = {
   siteConfig: 'nahocraft_v2_site_config',
@@ -150,6 +152,88 @@ export function SiteDataProvider({ children }: { children: React.ReactNode }) {
     loadFromStorage(STORAGE_KEYS.weeklySchedule, WEEKLY_SCHEDULE)
   );
 
+  // Carga inicial y concurrente desde Supabase con Promise.all (máxima velocidad)
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+
+    let isMounted = true;
+    Promise.all([
+      db.fetchSiteConfig(),
+      db.fetchMuralCategories(),
+      db.fetchPortfolioItems(),
+      db.fetchCourses(),
+      db.fetchCourseEnrollments(),
+      db.fetchQuoteTickets(),
+      db.fetchAboutMe(),
+      db.fetchInPersonClasses(),
+      db.fetchStudioPhotos(),
+      db.fetchWeeklySchedule(),
+    ])
+      .then(
+        ([
+          remoteConfig,
+          remoteCats,
+          remoteMurals,
+          remoteCourses,
+          remoteEnrollments,
+          remoteQuotes,
+          remoteAbout,
+          remoteClasses,
+          remotePhotos,
+          remoteSchedule,
+        ]) => {
+          if (!isMounted) return;
+          if (remoteConfig) {
+            setSiteConfig(remoteConfig);
+            saveToStorage(STORAGE_KEYS.siteConfig, remoteConfig);
+          }
+          if (remoteCats && remoteCats.length > 0) {
+            setMuralCategories(remoteCats);
+            saveToStorage(STORAGE_KEYS.muralCategories, remoteCats);
+          }
+          if (remoteMurals && remoteMurals.length > 0) {
+            setMuralItems(remoteMurals);
+            saveToStorage(STORAGE_KEYS.muralItems, remoteMurals);
+          }
+          if (remoteCourses && remoteCourses.length > 0) {
+            setCourses(remoteCourses);
+            saveToStorage(STORAGE_KEYS.courses, remoteCourses);
+          }
+          if (remoteEnrollments) {
+            setCourseEnrollments(remoteEnrollments);
+            saveToStorage(STORAGE_KEYS.courseEnrollments, remoteEnrollments);
+          }
+          if (remoteQuotes) {
+            setQuoteTickets(remoteQuotes);
+            saveToStorage(STORAGE_KEYS.quoteTickets, remoteQuotes);
+          }
+          if (remoteAbout) {
+            setAboutMe(remoteAbout);
+            saveToStorage(STORAGE_KEYS.aboutMe, remoteAbout);
+          }
+          if (remoteClasses && remoteClasses.length > 0) {
+            setInPersonClasses(remoteClasses);
+            saveToStorage(STORAGE_KEYS.inPersonClasses, remoteClasses);
+          }
+          if (remotePhotos && remotePhotos.length > 0) {
+            setStudioPhotos(remotePhotos);
+            saveToStorage(STORAGE_KEYS.studioPhotos, remotePhotos);
+          }
+          if (remoteSchedule && remoteSchedule.length > 0) {
+            setWeeklySchedule(remoteSchedule);
+            saveToStorage(STORAGE_KEYS.weeklySchedule, remoteSchedule);
+          }
+        }
+      )
+      .catch((err) => {
+        console.warn('[NahoCraft Supabase]: Error cargando datos iniciales:', err);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   // Sync popstate for browser back/forward buttons
   useEffect(() => {
     const handlePopState = () => {
@@ -158,30 +242,6 @@ export function SiteDataProvider({ children }: { children: React.ReactNode }) {
     };
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
-
-  // Sync across tabs if localStorage changes
-  useEffect(() => {
-    const handleStorage = () => {
-      setSiteConfig({
-        ...INITIAL_SITE_CONFIG,
-        ...loadFromStorage(STORAGE_KEYS.siteConfig, INITIAL_SITE_CONFIG),
-      });
-      setMuralCategories(loadFromStorage(STORAGE_KEYS.muralCategories, INITIAL_MURAL_CATEGORIES));
-      setMuralItems(loadFromStorage(STORAGE_KEYS.muralItems, PORTFOLIO_ITEMS));
-      setCourses(loadFromStorage(STORAGE_KEYS.courses, INITIAL_COURSES));
-      setCourseEnrollments(loadFromStorage(STORAGE_KEYS.courseEnrollments, INITIAL_COURSE_ENROLLMENTS));
-      setQuoteTickets(loadFromStorage(STORAGE_KEYS.quoteTickets, INITIAL_QUOTE_TICKETS));
-      setAboutMe({
-        ...INITIAL_ABOUT_ME,
-        ...loadFromStorage(STORAGE_KEYS.aboutMe, INITIAL_ABOUT_ME),
-      });
-      setInPersonClasses(loadFromStorage(STORAGE_KEYS.inPersonClasses, INITIAL_IN_PERSON_CLASSES));
-      setStudioPhotos(loadFromStorage(STORAGE_KEYS.studioPhotos, INITIAL_STUDIO_PHOTOS));
-      setWeeklySchedule(loadFromStorage(STORAGE_KEYS.weeklySchedule, WEEKLY_SCHEDULE));
-    };
-    window.addEventListener('storage', handleStorage);
-    return () => window.removeEventListener('storage', handleStorage);
   }, []);
 
   const navigateTo = useCallback((path: string, hash?: string) => {
@@ -199,10 +259,13 @@ export function SiteDataProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  // --- MÉTODOS MUTACIÓN (POST / PUT / DELETE) OPTIMIZADOS PARA SUPABASE ---
+
   const updateSiteConfig = useCallback((partial: Partial<SiteGeneralConfig>) => {
     setSiteConfig((prev) => {
       const next = { ...prev, ...partial };
       saveToStorage(STORAGE_KEYS.siteConfig, next);
+      db.saveSiteConfig(next).catch(console.error);
       return next;
     });
   }, []);
@@ -211,6 +274,7 @@ export function SiteDataProvider({ children }: { children: React.ReactNode }) {
     setMuralCategories((prev) => {
       const next = [...prev.filter((c) => c.id !== cat.id), cat];
       saveToStorage(STORAGE_KEYS.muralCategories, next);
+      db.upsertMuralCategory(cat).catch(console.error);
       return next;
     });
   }, []);
@@ -219,9 +283,9 @@ export function SiteDataProvider({ children }: { children: React.ReactNode }) {
     setMuralCategories((prev) => {
       const next = prev.map((c) => (c.id === cat.id ? cat : c));
       saveToStorage(STORAGE_KEYS.muralCategories, next);
+      db.upsertMuralCategory(cat).catch(console.error);
       return next;
     });
-    // Sincronizar etiqueta en los murales existentes de esa categoría
     setMuralItems((prev) => {
       const next = prev.map((m) =>
         m.category === cat.id ? { ...m, categoryLabel: cat.label } : m
@@ -235,6 +299,7 @@ export function SiteDataProvider({ children }: { children: React.ReactNode }) {
     setMuralCategories((prev) => {
       const next = prev.filter((c) => c.id !== id);
       saveToStorage(STORAGE_KEYS.muralCategories, next);
+      db.deleteMuralCategoryFromDb(id).catch(console.error);
       return next;
     });
   }, []);
@@ -243,6 +308,7 @@ export function SiteDataProvider({ children }: { children: React.ReactNode }) {
     setMuralItems((prev) => {
       const next = [item, ...prev];
       saveToStorage(STORAGE_KEYS.muralItems, next);
+      db.upsertPortfolioItem(item).catch(console.error);
       return next;
     });
   }, []);
@@ -251,6 +317,7 @@ export function SiteDataProvider({ children }: { children: React.ReactNode }) {
     setMuralItems((prev) => {
       const next = prev.map((m) => (m.id === item.id ? item : m));
       saveToStorage(STORAGE_KEYS.muralItems, next);
+      db.upsertPortfolioItem(item).catch(console.error);
       return next;
     });
   }, []);
@@ -259,6 +326,7 @@ export function SiteDataProvider({ children }: { children: React.ReactNode }) {
     setMuralItems((prev) => {
       const next = prev.filter((m) => m.id !== id);
       saveToStorage(STORAGE_KEYS.muralItems, next);
+      db.deletePortfolioItemFromDb(id).catch(console.error);
       return next;
     });
   }, []);
@@ -267,6 +335,7 @@ export function SiteDataProvider({ children }: { children: React.ReactNode }) {
     setCourses((prev) => {
       const next = [course, ...prev];
       saveToStorage(STORAGE_KEYS.courses, next);
+      db.upsertCourse(course).catch(console.error);
       return next;
     });
   }, []);
@@ -275,6 +344,7 @@ export function SiteDataProvider({ children }: { children: React.ReactNode }) {
     setCourses((prev) => {
       const next = prev.map((c) => (c.id === course.id ? course : c));
       saveToStorage(STORAGE_KEYS.courses, next);
+      db.upsertCourse(course).catch(console.error);
       return next;
     });
   }, []);
@@ -283,6 +353,7 @@ export function SiteDataProvider({ children }: { children: React.ReactNode }) {
     setCourses((prev) => {
       const next = prev.filter((c) => c.id !== id);
       saveToStorage(STORAGE_KEYS.courses, next);
+      db.deleteCourseFromDb(id).catch(console.error);
       return next;
     });
   }, []);
@@ -291,6 +362,8 @@ export function SiteDataProvider({ children }: { children: React.ReactNode }) {
     setCourseEnrollments((prev) => {
       const next = [enrollment, ...prev];
       saveToStorage(STORAGE_KEYS.courseEnrollments, next);
+      // Inserción atómica y segura mediante la función RPC de PostgreSQL
+      db.registerEnrollmentAtomic(enrollment).catch(console.error);
       return next;
     });
     setCourses((prev) => {
@@ -309,6 +382,7 @@ export function SiteDataProvider({ children }: { children: React.ReactNode }) {
       const target = prev.find((e) => e.id === enrollmentId);
       const next = prev.filter((e) => e.id !== enrollmentId);
       saveToStorage(STORAGE_KEYS.courseEnrollments, next);
+      db.deleteEnrollmentAtomic(enrollmentId).catch(console.error);
 
       if (target) {
         setCourses((prevCourses) => {
@@ -331,6 +405,7 @@ export function SiteDataProvider({ children }: { children: React.ReactNode }) {
         e.id === enrollmentId ? { ...e, lockedSessionId: sessionId } : e
       );
       saveToStorage(STORAGE_KEYS.courseEnrollments, next);
+      db.updateEnrollmentSession(enrollmentId, sessionId).catch(console.error);
       return next;
     });
   }, []);
@@ -339,6 +414,7 @@ export function SiteDataProvider({ children }: { children: React.ReactNode }) {
     setQuoteTickets((prev) => {
       const next = [ticket, ...prev];
       saveToStorage(STORAGE_KEYS.quoteTickets, next);
+      db.insertQuoteTicket(ticket).catch(console.error);
       return next;
     });
   }, []);
@@ -347,6 +423,7 @@ export function SiteDataProvider({ children }: { children: React.ReactNode }) {
     setQuoteTickets((prev) => {
       const next = prev.map((t) => (t.folio === folio ? { ...t, status } : t));
       saveToStorage(STORAGE_KEYS.quoteTickets, next);
+      db.updateQuoteTicketDb(folio, { status }).catch(console.error);
       return next;
     });
   }, []);
@@ -359,6 +436,7 @@ export function SiteDataProvider({ children }: { children: React.ReactNode }) {
       setQuoteTickets((prev) => {
         const next = prev.map((t) => (t.folio === folio ? { ...t, ...partial } : t));
         saveToStorage(STORAGE_KEYS.quoteTickets, next);
+        db.updateQuoteTicketDb(folio, partial).catch(console.error);
         return next;
       });
     },
@@ -369,6 +447,7 @@ export function SiteDataProvider({ children }: { children: React.ReactNode }) {
     setQuoteTickets((prev) => {
       const next = prev.filter((t) => t.folio !== folio);
       saveToStorage(STORAGE_KEYS.quoteTickets, next);
+      db.deleteQuoteTicketDb(folio).catch(console.error);
       return next;
     });
   }, []);
@@ -377,6 +456,7 @@ export function SiteDataProvider({ children }: { children: React.ReactNode }) {
     setAboutMe((prev) => {
       const next = { ...prev, ...partial };
       saveToStorage(STORAGE_KEYS.aboutMe, next);
+      db.saveAboutMe(next).catch(console.error);
       return next;
     });
   }, []);
@@ -384,12 +464,14 @@ export function SiteDataProvider({ children }: { children: React.ReactNode }) {
   const updateInPersonClasses = useCallback((classes: InPersonClassProgram[]) => {
     setInPersonClasses(classes);
     saveToStorage(STORAGE_KEYS.inPersonClasses, classes);
+    db.updateInPersonClassesDb(classes).catch(console.error);
   }, []);
 
   const addStudioPhoto = useCallback((photo: StudioGalleryPhoto) => {
     setStudioPhotos((prev) => {
       const next = [photo, ...prev];
       saveToStorage(STORAGE_KEYS.studioPhotos, next);
+      db.addStudioPhotoDb(photo).catch(console.error);
       return next;
     });
   }, []);
@@ -398,6 +480,7 @@ export function SiteDataProvider({ children }: { children: React.ReactNode }) {
     setStudioPhotos((prev) => {
       const next = prev.filter((p) => p.id !== id);
       saveToStorage(STORAGE_KEYS.studioPhotos, next);
+      db.deleteStudioPhotoDb(id).catch(console.error);
       return next;
     });
   }, []);
@@ -405,6 +488,7 @@ export function SiteDataProvider({ children }: { children: React.ReactNode }) {
   const updateWeeklySchedule = useCallback((schedule: DailySchedule[]) => {
     setWeeklySchedule(schedule);
     saveToStorage(STORAGE_KEYS.weeklySchedule, schedule);
+    db.updateWeeklyScheduleDb(schedule).catch(console.error);
   }, []);
 
   const resetAllDataToDefaults = useCallback(() => {

@@ -23,7 +23,8 @@ const EMAIL_AUDIT_LOG_KEY = 'nahocraft_sent_emails_audit_log';
  */
 export async function dispatchEmailPayload(payload: EmailPayload): Promise<EmailDispatchResult> {
   const messageId = `msg_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-  const endpoint = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_EMAIL_API_ENDPOINT) as string | undefined;
+  const customEndpoint = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_EMAIL_API_ENDPOINT) as string | undefined;
+  const endpoint = customEndpoint || (typeof window !== 'undefined' && window.location.hostname === 'localhost' ? '/api/send-email' : undefined);
 
   // Si existe endpoint de backend conectado
   if (endpoint) {
