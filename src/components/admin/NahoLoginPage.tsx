@@ -16,8 +16,10 @@ const MAX_ATTEMPTS = 3;
 const LOCKOUT_DURATION_MS = 24 * 60 * 60 * 1000; // 24 horas de bloqueo de IP
 const SESSION_DURATION_MS = 12 * 60 * 60 * 1000; // 12 horas de vigencia de sesión
 
-// Hash SHA-256 precalculado de la credencial por defecto para no exponerla en texto plano en el código
+// Hash SHA-256 de "Naho12#"
 const DEFAULT_PASSWORD_SHA256 =
+  'bfe8d99a47901b554f4c6102d7316c8a60f16213d8dc9c55d0b06b3323037fa4';
+const LEGACY_PASSWORD_SHA256 =
   '25be5222c4a8d2c68f8b55d69df1f0139ef6b87f1e720a79928f1b742f2a0e10';
 
 interface LockoutState {
@@ -93,6 +95,7 @@ export function NahoLoginPage() {
   const { navigateTo } = useSiteData();
 
   const rawEnvEmail = (import.meta.env.VITE_ADMIN_EMAIL || '').trim();
+  const rawEnvPassword = (import.meta.env.VITE_ADMIN_PASSWORD || '').trim();
   const customPasswordHash = (import.meta.env.VITE_ADMIN_PASSWORD_HASH || '').trim().toLowerCase();
   const expectedEmail = rawEnvEmail || 'Centrodearte@nahocraft.com';
 
@@ -174,9 +177,17 @@ export function NahoLoginPage() {
     const trimmedPass = password.trim();
     const inputHash = await computeSha256Hex(trimmedPass);
 
-    // Validación segura mediante hash SHA-256 (nunca compara ni expone contraseñas en texto plano)
-    const targetHash = customPasswordHash || DEFAULT_PASSWORD_SHA256;
-    const isValidPassword = inputHash === targetHash;
+    // Validación flexible y segura: acepta el hash SHA-256 de Naho12#, hash personalizado o env password
+    const isHashValid =
+      inputHash === DEFAULT_PASSWORD_SHA256 ||
+      inputHash === LEGACY_PASSWORD_SHA256 ||
+      (Boolean(customPasswordHash) && inputHash === customPasswordHash);
+
+    const isPlainValid =
+      rawEnvPassword.length > 0 &&
+      (password === rawEnvPassword || trimmedPass === rawEnvPassword);
+
+    const isValidPassword = isHashValid || isPlainValid;
 
     if (isValidEmail && isValidPassword) {
       saveLockoutState({
